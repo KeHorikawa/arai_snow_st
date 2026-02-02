@@ -23,6 +23,7 @@ share/python-wheels/
 MANIFEST
 
 # Virtual Environment
+.venv/
 venv/
 env/
 ENV/
@@ -48,7 +49,7 @@ venv.bak/
 .env.local
 
 # Streamlit
-.streamlit/
+# .streamlit/
 
 # Logs
 *.log
