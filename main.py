@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 import logging
 from datetime import datetime
 
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # 定数
 LOCATIONS = ["新井消防署", "頸南消防署", "妙高市役所 妙高支所"]
 CSV_FILE = "data_urls.csv"
+HISTORY_CSV_FILE = "snow_data_history.csv"
 
 
 @st.cache_data(ttl=3600)
@@ -27,6 +28,44 @@ def load_url_data() -> pd.DataFrame:
         logger.error(f"CSVファイルの読み込みに失敗: {e}")
         st.error("データURLの読み込みに失敗しました")
         return pd.DataFrame()
+
+
+def load_history_data() -> pd.DataFrame:
+    """過去データCSVファイルを読み込む"""
+    try:
+        df = pd.read_csv(HISTORY_CSV_FILE)
+        # データ型を適切に変換
+        df["year"] = df["year"].astype(int)
+        df["month"] = df["month"].astype(int)
+        df["day"] = df["day"].astype(int)
+        return df
+    except FileNotFoundError:
+        logger.info("過去データファイルが存在しません。新規作成します。")
+        return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"過去データファイルの読み込みに失敗: {e}")
+        return pd.DataFrame()
+
+
+def save_history_data(df: pd.DataFrame) -> None:
+    """過去データをCSVファイルに保存する"""
+    try:
+        df.to_csv(HISTORY_CSV_FILE, index=False)
+        logger.info(f"過去データを保存しました: {len(df)}件")
+    except Exception as e:
+        logger.error(f"過去データの保存に失敗: {e}")
+
+
+def get_current_month() -> Tuple[int, int]:
+    """現在の年月を取得"""
+    current_date = datetime.now()
+    return current_date.year, current_date.month
+
+
+def is_current_month(year: int, month: int) -> bool:
+    """指定された年月が当月かどうかを判定"""
+    current_year, current_month = get_current_month()
+    return year == current_year and month == current_month
 
 
 @st.cache_data(ttl=3600)
@@ -101,13 +140,34 @@ def fetch_snow_data(url: str, year: int, month: int) -> Optional[pd.DataFrame]:
                         else "-"
                     )
 
-                    # "-", "--", 空文字を NaN に変換
-                    snowfall_cm = (
-                        None if snowfall in ["-", "--", ""] else float(snowfall)
-                    )
-                    snowdepth_cm = (
-                        None if snowdepth in ["-", "--", ""] else float(snowdepth)
-                    )
+                    # 降雪量の処理: "-", "--", 空文字、"30-"のような表記を処理
+                    snowfall_clean = snowfall.strip()
+                    if snowfall_clean in ["-", "--", ""]:
+                        snowfall_cm = None
+                    else:
+                        # "30-"のような表記から"-"を除去
+                        snowfall_clean = snowfall_clean.rstrip("-")
+                        try:
+                            snowfall_cm = (
+                                float(snowfall_clean) if snowfall_clean else None
+                            )
+                        except ValueError:
+                            snowfall_cm = None
+
+                    # 積雪量の処理: "-", "--", 空文字を処理、負の値は無視
+                    snowdepth_clean = snowdepth.strip()
+                    if snowdepth_clean in ["-", "--", ""]:
+                        snowdepth_cm = None
+                    else:
+                        try:
+                            snowdepth_value = float(snowdepth_clean)
+                            # 積雪量が負の値の場合は、降雪量の"-"と混同している可能性があるためNoneにする
+                            if snowdepth_value < 0:
+                                snowdepth_cm = None
+                            else:
+                                snowdepth_cm = snowdepth_value
+                        except ValueError:
+                            snowdepth_cm = None
 
                     data_rows.append(
                         {
@@ -155,10 +215,10 @@ def create_snow_graph(
         (df["year"] == year) & (df["month"] == month) & (df["location"] == location)
     ].sort_values("day")
 
-    # グラフ作成
+    # グラフ作成（サブプロットで2つのy軸を使用）
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # 積雪量（棒グラフ）
+    # 積雪量（棒グラフ）- 左軸（secondary_y=False）
     fig.add_trace(
         go.Bar(
             x=filtered_df["day"],
@@ -170,7 +230,7 @@ def create_snow_graph(
         secondary_y=False,
     )
 
-    # 降雪量（折れ線グラフ）
+    # 降雪量（折れ線グラフ）- 右軸（secondary_y=True）
     fig.add_trace(
         go.Scatter(
             x=filtered_df["day"],
@@ -180,14 +240,13 @@ def create_snow_graph(
             line=dict(color="red", width=2),
             marker=dict(size=6),
         ),
-        secondary_y=False,
+        secondary_y=True,
     )
 
     # レイアウト設定
     fig.update_layout(
         title=f"{year}年{month}月 / {location}",
         xaxis_title="日",
-        yaxis_title="cm",
         hovermode="x unified",
         height=400,
         showlegend=True,
@@ -196,6 +255,22 @@ def create_snow_graph(
 
     # X軸の範囲を1-31に設定
     fig.update_xaxes(range=[0.5, 31.5], dtick=5)
+
+    # 左軸（積雪量）の設定: 0~300cm（60cm間隔で目盛り）
+    fig.update_yaxes(
+        title_text="積雪量 (cm)",
+        range=[0, 300],
+        dtick=60,
+        secondary_y=False,
+    )
+
+    # 右軸（降雪量）の設定: 0~100cm（20cm間隔で目盛り）
+    fig.update_yaxes(
+        title_text="降雪量 (cm)",
+        range=[0, 100],
+        dtick=20,
+        secondary_y=True,
+    )
 
     return fig
 
@@ -309,6 +384,47 @@ def main():
                 f"⚠️ {sel['year']}年{sel['month']}月 / {sel['location']} が重複しています"
             )
 
+    # 過去データの読み込み
+    history_df = load_history_data()
+    current_year, current_month = get_current_month()
+
+    # 不足年月のデータを自動取得・保存
+    if not url_df.empty:
+        missing_data_fetched = False
+        for _, row in url_df.iterrows():
+            year = int(row["年"])
+            month = int(row["月"])
+            url = row["URL"]
+
+            # 当月のデータは毎回取得するためスキップ
+            if is_current_month(year, month):
+                continue
+
+            # 過去データに該当年月のデータが存在するかチェック
+            if not history_df.empty:
+                existing_data = history_df[
+                    (history_df["year"] == year) & (history_df["month"] == month)
+                ]
+                if not existing_data.empty:
+                    continue
+
+            # 不足データを取得
+            with st.spinner(f"不足データを取得中: {year}年{month}月..."):
+                new_df = fetch_snow_data(url, year, month)
+                if new_df is not None and not new_df.empty:
+                    # 過去データに追加
+                    if history_df.empty:
+                        history_df = new_df
+                    else:
+                        history_df = pd.concat([history_df, new_df], ignore_index=True)
+                    missing_data_fetched = True
+
+        # 不足データを取得した場合は保存
+        if missing_data_fetched:
+            save_history_data(history_df)
+            # キャッシュをクリアして再読み込み
+            st.cache_data.clear()
+
     # メイン表示エリア
     st.markdown("## 📈 グラフ表示")
 
@@ -327,9 +443,39 @@ def main():
 
         url = url_row.iloc[0]["URL"]
 
-        # データ取得
-        with st.spinner(f"{year}年{month}月のデータを取得中..."):
-            df = fetch_snow_data(url, year, month)
+        # データ取得: 当月は毎回取得、それ以外は過去データから読み込み
+        df = None
+        if is_current_month(year, month):
+            # 当月は毎回取得
+            with st.spinner(f"{year}年{month}月のデータを取得中..."):
+                df = fetch_snow_data(url, year, month)
+        else:
+            # 過去データから読み込み
+            if not history_df.empty:
+                df = history_df[
+                    (history_df["year"] == year) & (history_df["month"] == month)
+                ].copy()
+                if df.empty:
+                    # 過去データにない場合は取得
+                    with st.spinner(f"{year}年{month}月のデータを取得中..."):
+                        df = fetch_snow_data(url, year, month)
+                        # 取得したデータを保存
+                        if df is not None and not df.empty:
+                            if history_df.empty:
+                                history_df = df
+                            else:
+                                history_df = pd.concat(
+                                    [history_df, df], ignore_index=True
+                                )
+                            save_history_data(history_df)
+            else:
+                # 過去データファイルが存在しない場合は取得
+                with st.spinner(f"{year}年{month}月のデータを取得中..."):
+                    df = fetch_snow_data(url, year, month)
+                    # 取得したデータを保存
+                    if df is not None and not df.empty:
+                        history_df = df
+                        save_history_data(history_df)
 
         if df is None or df.empty:
             st.error(f"❌ {year}年{month}月 / {location} のデータ取得に失敗しました")
