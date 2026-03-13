@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from typing import Optional, Tuple, List
 
@@ -135,18 +136,13 @@ def _pick_data_table(soup: BeautifulSoup) -> Optional[BeautifulSoup]:
 
 
 def _to_float_or_none(s: str) -> Optional[float]:
-    """
-    数値っぽい文字列をfloatに。 "-", "--", "" は None。
-    "30-" のような末尾 '-' は除去。
-    """
+    """数値っぽい文字列をfloatに。数字が含まれなければ None（"-", "--", "" 等）。"""
     x = (s or "").strip()
-    if x in {"-", "--", ""}:
-        return None
-    x = x.rstrip("-").strip()
-    if x == "":
+    match = re.search(r'\d+(?:\.\d+)?', x)
+    if not match:
         return None
     try:
-        return float(x)
+        return float(match.group())
     except ValueError:
         return None
 
@@ -198,9 +194,11 @@ def fetch_snow_data(url: str, year: int, month: int) -> Optional[pd.DataFrame]:
                 snowfall_cm = _to_float_or_none(snowfall_raw)
                 snowdepth_cm = _to_float_or_none(snowdepth_raw)
 
-                # 積雪量が負になるのは仕様的におかしいので None 扱い
+                # 積雪量・降雪量が負になるのは仕様的におかしいので None 扱い
                 if snowdepth_cm is not None and snowdepth_cm < 0:
                     snowdepth_cm = None
+                if snowfall_cm is not None and snowfall_cm < 0:
+                    snowfall_cm = None
 
                 data_rows.append(
                     {
@@ -288,23 +286,23 @@ def create_snow_graph(df: pd.DataFrame, year: int, month: int, location: str) ->
 
     fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    # 積雪量（棒）: 左
+    # 降雪量（棒）: 左
     fig.add_trace(
         go.Bar(
             x=filtered_df["day"],
-            y=filtered_df["snowdepth_cm"],
-            name="積雪量",
+            y=filtered_df["snowfall_cm"],
+            name="降雪量",
             opacity=0.7,
         ),
         secondary_y=False,
     )
 
-    # 降雪量（線）: 右
+    # 積雪量（線）: 右
     fig.add_trace(
         go.Scatter(
             x=filtered_df["day"],
-            y=filtered_df["snowfall_cm"],
-            name="降雪量",
+            y=filtered_df["snowdepth_cm"],
+            name="積雪量",
             mode="lines+markers",
             line=dict(color="red"),
             marker=dict(color="red"),
@@ -324,15 +322,15 @@ def create_snow_graph(df: pd.DataFrame, year: int, month: int, location: str) ->
     fig.update_xaxes(range=[0.5, 31.5], dtick=5)
 
     fig.update_yaxes(
-        title_text="積雪量 (cm)",
-        range=[0, 300],
-        dtick=60,
-        secondary_y=False,
-    )
-    fig.update_yaxes(
         title_text="降雪量 (cm)",
         range=[0, 100],
         dtick=20,
+        secondary_y=False,
+    )
+    fig.update_yaxes(
+        title_text="積雪量 (cm)",
+        range=[0, 300],
+        dtick=60,
         secondary_y=True,
     )
 
@@ -395,6 +393,10 @@ def main() -> None:
         seen.add(key)
         unique_selections.append(sel)
 
+    if st.sidebar.button("🔄 データを再読み込み"):
+        st.cache_data.clear()
+        st.rerun()
+
     # 履歴読み込み
     history_df = load_history_data()
 
@@ -440,15 +442,14 @@ def main() -> None:
         save_history_data(history_df)
 
     st.markdown("---")
-    st.markdown(
-        """
-    <div style='text-align: center; color: #888; font-size: 0.9em;'>
-        データ出典: <a href='https://www.city.myoko.niigata.jp/life-info/snow-info/snow/' target='_blank'>妙高市 雪情報ホームページ</a><br>
-        観測時刻: 9時 | 降雪量: 前日分 | 積雪量: 当日分
-    </div>
-    """,
-        unsafe_allow_html=True,
-    )
+    col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        st.link_button(
+            "🌨️ 妙高市 雪情報ホームページ",
+            "https://www.city.myoko.niigata.jp/life-info/snow-info/snow/",
+            use_container_width=True,
+        )
+    st.caption("観測時刻: 9時 | 降雪量: 前日分 | 積雪量: 当日分")
 
 
 if __name__ == "__main__":
