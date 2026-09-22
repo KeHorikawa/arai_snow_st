@@ -222,10 +222,25 @@ def _pick_data_table(soup: BeautifulSoup) -> Optional[BeautifulSoup]:
     return tables[0]
 
 
+def _cell_text(cell) -> str:
+    """セルの文字列を取り出す。ただし画面に表示されない要素は先に捨てる。
+
+    市のページには、画面外（left: -5000px）に隠された "-" が数字の前後に入っていることがある。
+    見た目は "18" でも、素直にテキストを取ると "-18" になる。
+    符号を正しく読むには、まずこれを剥がす必要がある。
+    """
+    for el in cell.find_all(style=True):
+        style = el["style"].replace(" ", "").lower()
+        if "position:absolute" in style and ("left:-" in style or "top:-" in style):
+            el.decompose()
+    return cell.get_text(strip=True)
+
+
 def _to_float_or_none(s: str) -> Optional[float]:
     """数値っぽい文字列をfloatに。数字が含まれなければ None（"-", "--", "" 等）。
 
     符号を拾う。旧実装の `\\d+(?:\\.\\d+)?` は "-5" を 5.0 にしていた。
+    ただし符号を拾うのは、隠し要素を _cell_text() で取り除いた後に限る。
     """
     x = (s or "").strip()
     match = re.search(r"-?\d+(?:\.\d+)?", x)
@@ -262,7 +277,7 @@ def parse_month_page(html: str, year: int, month: int, url: str) -> pd.DataFrame
         if len(cols) < 7:
             continue
 
-        cols_text = [c.get_text(strip=True) for c in cols]
+        cols_text = [_cell_text(c) for c in cols]
 
         # 1列目から日付を取る（例: "3日"）
         day_text = cols_text[0].replace("日", "").strip()
