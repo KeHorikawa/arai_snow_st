@@ -1,12 +1,9 @@
 import logging
-import re
 from datetime import datetime
-from typing import Optional, Tuple, List
+from typing import Tuple, List
 
 import pandas as pd
-import requests
 import streamlit as st
-from bs4 import BeautifulSoup
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -30,9 +27,15 @@ HISTORY_REQUIRED_COLS = ["year", "month", "day", "location", "snowfall_cm", "sno
 # ==========
 # データ読み込み
 # ==========
+# データの取得は collect.py（GitHub Actions が毎朝実行）が行う。
+# このアプリは保存されたファイルを読むだけで、市サイトへは取りに行かない。
 @st.cache_data(ttl=3600)
 def load_url_data() -> pd.DataFrame:
-    """URL一覧CSVファイルを読み込む（列: 年, 月, URL を想定）"""
+    """URL一覧CSVファイルを読み込む（列: 年, 月, URL を想定）
+
+    このアプリでは年・月の選択肢としてのみ使う（URLは参照しない）。
+    ファイル自体は collect.py が毎朝インデックスページから再生成する。
+    """
     try:
         df = pd.read_csv(CSV_FILE)
         # 最低限の列チェック
@@ -47,8 +50,9 @@ def load_url_data() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=3600)
 def load_history_data() -> pd.DataFrame:
-    """過去データCSVファイルを読み込む（無ければ空DataFrame）"""
+    """観測データCSVファイルを読み込む（無ければ空DataFrame）"""
     try:
         df = pd.read_csv(HISTORY_CSV_FILE)
         if df.empty:
@@ -77,22 +81,11 @@ def load_history_data() -> pd.DataFrame:
         return df
 
     except FileNotFoundError:
-        logger.info("過去データファイルが存在しません。新規作成します。")
+        logger.warning("観測データファイルが存在しません。")
         return pd.DataFrame(columns=HISTORY_REQUIRED_COLS)
     except Exception as e:
-        logger.error(f"過去データファイルの読み込みに失敗: {e}")
+        logger.error(f"観測データファイルの読み込みに失敗: {e}")
         return pd.DataFrame(columns=HISTORY_REQUIRED_COLS)
-
-
-def save_history_data(df: pd.DataFrame) -> None:
-    """過去データをCSVファイルに保存する"""
-    try:
-        # 列順を揃える（読者が見ても分かりやすい）
-        df = df.reindex(columns=HISTORY_REQUIRED_COLS)
-        df.to_csv(HISTORY_CSV_FILE, index=False)
-        logger.info(f"過去データを保存しました: {len(df)}件")
-    except Exception as e:
-        logger.error(f"過去データの保存に失敗: {e}")
 
 
 # ==========
@@ -109,170 +102,32 @@ def get_latest_available_month(url_df: pd.DataFrame) -> Tuple[int, int]:
     return int(latest["年"]), int(latest["月"])
 
 
-def is_latest_month(year: int, month: int, latest_year: int, latest_month: int) -> bool:
-    """指定年月が、URL一覧における最新公開月かどうか"""
-    return year == latest_year and month == latest_month
-
-
 # ==========
-# スクレイピング
+# データ取得
 # ==========
-def _pick_data_table(soup: BeautifulSoup) -> Optional[BeautifulSoup]:
-    """
-    妙高市ページ内の tables から、観測所名が含まれるテーブルを優先して選ぶ。
-    見つからなければ最初のテーブルを返す。
-    """
-    tables = soup.find_all("table")
-    if not tables:
-        return None
-
-    # 観測所名が含まれるテーブルを優先
-    for tbl in tables:
-        text = tbl.get_text(" ", strip=True)
-        if all(loc in text for loc in LOCATIONS):
-            return tbl
-
-    return tables[0]
-
-
-def _to_float_or_none(s: str) -> Optional[float]:
-    """数値っぽい文字列をfloatに。数字が含まれなければ None（"-", "--", "" 等）。"""
-    x = (s or "").strip()
-    match = re.search(r'\d+(?:\.\d+)?', x)
-    if not match:
-        return None
-    try:
-        return float(match.group())
-    except ValueError:
-        return None
-
-
-@st.cache_data(ttl=3600)
-def fetch_snow_data(url: str, year: int, month: int) -> Optional[pd.DataFrame]:
-    """指定URLから降雪・積雪データを取得して tidy DataFrame を返す（失敗時None）"""
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        response.encoding = response.apparent_encoding
-
-        soup = BeautifulSoup(response.text, "lxml")
-
-        table = _pick_data_table(soup)
-        if table is None:
-            logger.warning(f"テーブルが見つかりません: {url}")
-            return None
-
-        rows = table.find_all("tr")
-        if len(rows) < 3:
-            logger.warning(f"テーブル行数が少なすぎます: {url}")
-            return None
-
-        data_rows = []
-
-        # ヘッダーは基本2行想定。ただし壊れにくいよう、日付列が取れた行だけ採用する
-        for row in rows[1:]:
-            cols = row.find_all(["td", "th"])
-            if len(cols) < 7:
-                continue
-
-            cols_text = [c.get_text(strip=True) for c in cols]
-
-            # 1列目から日付を取る（例: "3日"）
-            day_text = cols_text[0].replace("日", "").strip()
-            if not day_text.isdigit():
-                continue
-            day = int(day_text)
-
-            # 実際の列順: [日, 降雪1, 積雪1, 降雪2, 積雪2, 降雪3, 積雪3]
-            for i, location in enumerate(LOCATIONS):
-                snowfall_idx = i * 2 + 1
-                snowdepth_idx = i * 2 + 2
-
-                snowfall_raw = cols_text[snowfall_idx] if snowfall_idx < len(cols_text) else "-"
-                snowdepth_raw = cols_text[snowdepth_idx] if snowdepth_idx < len(cols_text) else "-"
-
-                snowfall_cm = _to_float_or_none(snowfall_raw)
-                snowdepth_cm = _to_float_or_none(snowdepth_raw)
-
-                # 積雪量・降雪量が負になるのは仕様的におかしいので None 扱い
-                if snowdepth_cm is not None and snowdepth_cm < 0:
-                    snowdepth_cm = None
-                if snowfall_cm is not None and snowfall_cm < 0:
-                    snowfall_cm = None
-
-                data_rows.append(
-                    {
-                        "year": year,
-                        "month": month,
-                        "day": day,
-                        "location": location,
-                        "snowfall_cm": snowfall_cm,
-                        "snowdepth_cm": snowdepth_cm,
-                    }
-                )
-
-        if not data_rows:
-            logger.warning(f"データが抽出できませんでした: {url}")
-            return None
-
-        return pd.DataFrame(data_rows)
-
-    except requests.RequestException as e:
-        logger.error(f"HTTPリクエストエラー: {url} - {e}")
-        return None
-    except Exception as e:
-        logger.error(f"データ取得エラー: {url} - {e}")
-        return None
-
-
-# ==========
-# データ取得戦略（分岐ロジックを集約）
-# ==========
-def history_has_month(history_df: pd.DataFrame, year: int, month: int) -> bool:
-    if history_df.empty:
-        return False
-    return not history_df[(history_df["year"] == year) & (history_df["month"] == month)].empty
-
-
 def get_month_df(
     *,
     year: int,
     month: int,
-    url: str,
     location: str,
     history_df: pd.DataFrame,
-    latest_year: int,
-    latest_month: int,
-) -> Tuple[Optional[pd.DataFrame], pd.DataFrame, bool]:
-    """
-    指定年月のデータを返す。
-    - 最新公開月: 毎回Web取得（更新される可能性があるため）
-    - それ以外: 履歴CSVから（無ければWeb取得して履歴に追記）
-    戻り値:
-      (df, updated_history_df, history_updated_flag)
-    """
-    history_updated = False
+) -> pd.DataFrame:
+    """指定年月・指定地点のデータを観測データCSVから取り出す"""
+    if history_df.empty:
+        return history_df
 
-    if is_latest_month(year, month, latest_year, latest_month):
-        # 最新公開月は毎回取得
-        df = fetch_snow_data(url, year, month)
-        return df, history_df, False
+    return history_df[
+        (history_df["year"] == year)
+        & (history_df["month"] == month)
+        & (history_df["location"] == location)
+    ].copy()
 
-    # 過去月：履歴にあればそれを使う
-    if history_has_month(history_df, year, month):
-        df = history_df[(history_df["year"] == year) & (history_df["month"] == month)].copy()
-        return df, history_df, False
 
-    # 履歴にない → Web取得して履歴に追記
-    df = fetch_snow_data(url, year, month)
-    if df is not None and not df.empty:
-        if history_df.empty:
-            history_df = df.copy()
-        else:
-            history_df = pd.concat([history_df, df], ignore_index=True)
-        history_updated = True
-
-    return df, history_df, history_updated
+def has_any_value(df: pd.DataFrame) -> bool:
+    """降雪量・積雪量のどちらかに値がある行が1つでもあるか（全日欠測の月を判別する）"""
+    if df.empty:
+        return False
+    return bool(df["snowfall_cm"].notna().any() or df["snowdepth_cm"].notna().any())
 
 
 # ==========
@@ -397,49 +252,33 @@ def main() -> None:
         st.cache_data.clear()
         st.rerun()
 
-    # 履歴読み込み
+    # 観測データ読み込み
     history_df = load_history_data()
 
     st.markdown("## 📈 グラフ表示")
-
-    # 表示ごとに取得（必要なら履歴更新）
-    history_updated_any = False
 
     for sel in unique_selections:
         year = int(sel["year"])
         month = int(sel["month"])
         location = sel["location"]
 
-        url_row = url_df[(url_df["年"] == year) & (url_df["月"] == month)]
-        if url_row.empty:
-            st.warning(f"⚠️ {year}年{month}月のデータはありません")
+        df = get_month_df(
+            year=year,
+            month=month,
+            location=location,
+            history_df=history_df,
+        )
+
+        if df.empty:
+            st.info(f"ℹ️ {year}年{month}月 / {location} のデータはまだ収集されていません")
             continue
 
-        url = url_row.iloc[0]["URL"]
-
-        with st.spinner(f"{year}年{month}月のデータを準備中..."):
-            df, history_df, history_updated = get_month_df(
-                year=year,
-                month=month,
-                url=url,
-                location=location,
-                history_df=history_df,
-                latest_year=latest_year,
-                latest_month=latest_month,
-            )
-            if history_updated:
-                history_updated_any = True
-
-        if df is None or df.empty:
-            st.error(f"❌ {year}年{month}月 / {location} のデータ取得に失敗しました")
+        if not has_any_value(df):
+            st.info(f"ℹ️ {year}年{month}月 / {location} は全日が欠測のため、表示できるデータがありません")
             continue
 
         fig = create_snow_graph(df, year, month, location)
         st.plotly_chart(fig, use_container_width=True)
-
-    # 履歴が更新されたら保存（最後にまとめて1回）
-    if history_updated_any:
-        save_history_data(history_df)
 
     st.markdown("---")
     col_left, col_center, col_right = st.columns([1, 2, 1])
