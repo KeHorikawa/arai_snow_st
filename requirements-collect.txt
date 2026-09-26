@@ -1,0 +1,5 @@
+# collect.py（GitHub Actions）専用の最小依存。streamlit と plotly は入れない。
+pandas>=2.0.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
