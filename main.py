@@ -278,7 +278,7 @@ def main() -> None:
             continue
 
         fig = create_snow_graph(df, year, month, location)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     st.markdown("---")
     col_left, col_center, col_right = st.columns([1, 2, 1])
@@ -286,7 +286,7 @@ def main() -> None:
         st.link_button(
             "🌨️ 妙高市 雪情報ホームページ",
             "https://www.city.myoko.niigata.jp/life-info/snow-info/snow/",
-            use_container_width=True,
+            width="stretch",
         )
     st.caption("観測時刻: 9時 | 降雪量: 前日分 | 積雪量: 当日分")
 

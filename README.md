@@ -95,6 +95,7 @@ arai_snow_st/
 ├── data/
 │   ├── snow_data.json           # 最新シーズンの表示用データ（派生）
 │   └── status.json              # 収集の実行記録
+├── tests/test_app.py            # 画面テスト（AppTest）
 ├── plans/                       # 移行計画
 ├── Documents/                   # 要件メモ・作業ログ
 ├── requirements.txt             # アプリの依存パッケージ
@@ -236,6 +237,17 @@ pip install -r requirements.txt
 | year | month | day | location | snowfall_cm | snowdepth_cm |
 |------|-------|-----|----------|-------------|--------------|
 | 2024 | 12    | 1   | 新井消防署 | 10.0        | 50.0         |
+
+### テスト
+
+ブラウザを開かずに画面を検査するテストがあります（`streamlit.testing.v1.AppTest` を使用）。
+
+```bash
+python tests/test_app.py     # そのまま実行（pytest不要・約1秒）
+pytest tests/test_app.py     # pytest があればこちらでも
+```
+
+`main.py` を変更したときは、これを走らせてから公開してください。
 
 ### キャッシュの削除
 
