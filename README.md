@@ -110,7 +110,7 @@ arai_snow_st/
 アプリ側は保存されたデータを読むだけで、市のサイトへは取りに行きません。
 
 ```
-GitHub Actions（毎朝 10:30 JST）
+GitHub Actions（毎朝 10:17 JST）
   └ collect.py
        ├ snow_data_history.csv   全シーズンの観測データ（唯一の正）
        ├ data/snow_data.json     最新シーズンの表示用データ

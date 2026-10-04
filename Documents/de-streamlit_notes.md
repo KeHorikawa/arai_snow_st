@@ -11,6 +11,7 @@
 | 計画の正 | [plans/2026-07-03_de-streamlit_plan.md](../plans/2026-07-03_de-streamlit_plan.md) |
 | 実装の記録（前半） | [Documents/worklog/2026-09-22_winter-prep-1_collect.md](worklog/2026-09-22_winter-prep-1_collect.md) |
 | 実装の記録（後半） | [Documents/worklog/2026-09-26_winter-prep-1_actions-streamlit.md](worklog/2026-09-26_winter-prep-1_actions-streamlit.md) |
+| cron の遅延観測 | [Documents/worklog/2026-10-05_cron-delay-observation.md](worklog/2026-10-05_cron-delay-observation.md) |
 
 ---
 
@@ -32,7 +33,7 @@
 ### 全体図
 
 ```
-                GitHub Actions（毎朝 10:30 JST）
+                GitHub Actions（毎朝 10:17 JST）
                         │ collect.py
                         ▼
         ┌───────────────┴───────────────┐
@@ -257,7 +258,7 @@ Pages の制限（リポジトリ1GB・転送100GB/月・ビルド10回/時）�
 | 失敗条件を「日数が既存の8割未満」 | 誤検知が一番高くつく。冬の朝に誤報が来ると通知を無視する癖がつく |
 | `--all` を2009年まで（97ページ） | 17シーズンすべて同じ構造だと実測できた。取得は一度きりで済む |
 | 再読み込みボタンを残した | 連載第9回で意図して追加されたもの。消さずに役割を移した |
-| 実行時刻を10:30 JST | 遅れは可逆だが、早すぎると「緑なのに中身が古い」という気づきにくい壊れ方になる |
+| 実行時刻を10:30 JST | 遅れは可逆だが、早すぎると「緑なのに中身が古い」という気づきにくい壊れ方になる<br>※2026-10-05 に `10:17` へ変更。[遅延観測の記録](worklog/2026-10-05_cron-delay-observation.md)を参照 |
 | JSONに昨シーズンを入れる | 空だと10月に静的サイトを実データで試せない |
 | 失敗を記録してから落とす | 即失敗させると `status.json` がコミットされず、原因が履歴に残らない |
 
