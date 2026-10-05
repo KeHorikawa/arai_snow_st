@@ -92,8 +92,11 @@ arai_snow_st/
 ├── .github/workflows/collect.yml # 毎朝の自動実行
 ├── data_urls.csv                # 月別ページのURL一覧（毎朝自動生成される派生ファイル）
 ├── snow_data_history.csv        # 全シーズンの観測データ（唯一の正）
+├── docs/                        # GitHub Pages で公開されるフォルダ
+│   ├── index.html               # 静的サイト（スマホ用）
+│   ├── data/snow_data.json      # 最新シーズンの表示用データ（派生）
+│   └── vendor/                  # Chart.js（CDNではなく同梱）
 ├── data/
-│   ├── snow_data.json           # 最新シーズンの表示用データ（派生）
 │   └── status.json              # 収集の実行記録
 ├── tests/test_app.py            # 画面テスト（AppTest）
 ├── plans/                       # 移行計画
@@ -113,7 +116,7 @@ arai_snow_st/
 GitHub Actions（毎朝 10:17 JST）
   └ collect.py
        ├ snow_data_history.csv   全シーズンの観測データ（唯一の正）
-       ├ data/snow_data.json     最新シーズンの表示用データ
+       ├ docs/data/snow_data.json  最新シーズンの表示用データ（静的サイトが読む）
        └ data/status.json        実行記録
                   ↓ 変更があればコミット
 main.py（Streamlit）… 保存されたデータを読んで描く
@@ -175,7 +178,7 @@ GitHub の Actions タブ → 「collect snow data」 → 「Run workflow」か�
   毎朝取得するのは当シーズンの最新月1枚だけのため、たとえば12月に入ったあとで
   11月分の数字が訂正されても拾えません。必要なときは `python collect.py --all` を手動で実行してください
 - **観測データに欠測（`-`）があります。** 「今朝の数値」が今日のものとは限りません。
-  `data/snow_data.json` の `latest.observed_date` に、実際の観測日が入っています
+  `docs/data/snow_data.json` の `latest.observed_date` に、実際の観測日が入っています
 
 ## トラブルシューティング
 

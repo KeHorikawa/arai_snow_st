@@ -38,7 +38,7 @@
                         ▼
         ┌───────────────┴───────────────┐
         ▼                               ▼
-snow_data_history.csv            data/snow_data.json
+snow_data_history.csv          docs/data/snow_data.json
 （全18シーズン・8,796行）          （最新シーズンのみ・15KB）
         │                               │
         ▼                               ▼
@@ -54,7 +54,7 @@ snow_data_history.csv            data/snow_data.json
 | 表示側 | 読むファイル | 用途 |
 |---|---|---|
 | Streamlit版 | `snow_data_history.csv`（全18シーズン） | じっくり見る道具。年月を選んで過去を見る |
-| 静的サイト（次回） | `data/snow_data.json`（最新シーズンのみ） | 毎朝3秒の道具 |
+| 静的サイト | `docs/data/snow_data.json`（最新シーズンのみ） | 毎朝3秒の道具 |
 
 JSONには当シーズン分しか入っていないため、**Streamlit版の「18シーズンから選ぶ」機能は賄えない**。
 だからタスク5では、あえてJSONではなくCSVを読ませている。

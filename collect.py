@@ -8,9 +8,9 @@ GitHub Actions から毎朝1回実行することを想定している。
     python collect.py --dry-run    取得して結果を表示するがファイルは書かない
 
 出力は3つ。
-    snow_data_history.csv   唯一の正・全シーズン（upsert）
-    data/snow_data.json     派生・最新データのあるシーズンの表示用
-    data/status.json        実行記録（毎日必ず更新する）
+    snow_data_history.csv       唯一の正・全シーズン（upsert）
+    docs/data/snow_data.json    派生・最新データのあるシーズンの表示用（静的サイトが読む）
+    data/status.json            実行記録（毎日必ず更新する）
 
 ジョブを失敗させる条件は CollectError の送出箇所を参照。
 「当シーズンのページがまだ無い」はオフシーズンの正常な状態であり、失敗ではない。
@@ -60,8 +60,13 @@ BASE_DIR = Path(__file__).resolve().parent
 HISTORY_CSV = BASE_DIR / "snow_data_history.csv"
 URLS_CSV = BASE_DIR / "data_urls.csv"
 DATA_DIR = BASE_DIR / "data"
-SNOW_JSON = DATA_DIR / "snow_data.json"
 STATUS_JSON = DATA_DIR / "status.json"
+
+# 静的サイト（GitHub Pages）が読むデータ。
+# Pages は「mainブランチの /docs」を公開ルートにしているため、docs/ の外に置くと
+# サイトから読めない（../data/snow_data.json は404になる）。
+DOCS_DATA_DIR = BASE_DIR / "docs" / "data"
+SNOW_JSON = DOCS_DATA_DIR / "snow_data.json"
 
 HISTORY_COLS = ["year", "month", "day", "location", "snowfall_cm", "snowdepth_cm"]
 HISTORY_KEY = ["year", "month", "day", "location"]
@@ -450,7 +455,7 @@ def save_history(df: pd.DataFrame) -> None:
 
 
 # ==========
-# data/snow_data.json（派生・表示用）
+# docs/data/snow_data.json（派生・表示用）
 # ==========
 def _num(value) -> Optional[float]:
     """JSONに書く数値。整数なら int にして見やすくする。"""
@@ -563,7 +568,7 @@ def build_snow_data(history: pd.DataFrame, url_map: Dict[Tuple[int, int], str], 
 
 
 def write_json(path: Path, payload: Dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     logger.info(f"{path.relative_to(BASE_DIR)} を書き出しました")
 

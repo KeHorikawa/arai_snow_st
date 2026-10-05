@@ -1,0 +1,26 @@
+{
+  "name": "妙高の雪",
+  "short_name": "妙高の雪",
+  "description": "妙高市の降雪・積雪データ（新井消防署・頸南消防署・妙高市役所 妙高支所）",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0d1b2a",
+  "background_color": "#0d1b2a",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
