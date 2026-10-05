@@ -94,11 +94,15 @@ arai_snow_st/
 ├── snow_data_history.csv        # 全シーズンの観測データ（唯一の正）
 ├── docs/                        # GitHub Pages で公開されるフォルダ
 │   ├── index.html               # 静的サイト（スマホ用）
+│   ├── manifest.json            # PWA：アプリ名・アイコン・全画面の指定
+│   ├── service-worker.js        # PWA：キャッシュ戦略
+│   ├── icons/                   # PWA：アイコン3枚
 │   ├── data/snow_data.json      # 最新シーズンの表示用データ（派生）
 │   └── vendor/                  # Chart.js（CDNではなく同梱）
 ├── data/
 │   └── status.json              # 収集の実行記録
 ├── tests/test_app.py            # 画面テスト（AppTest）
+├── tools/make_icons.py          # PWAアイコンの生成
 ├── plans/                       # 移行計画
 ├── Documents/                   # 要件メモ・作業ログ
 ├── requirements.txt             # アプリの依存パッケージ
@@ -106,6 +110,38 @@ arai_snow_st/
 ├── README.md                    # このファイル
 └── .gitignore                   # Git除外設定
 ```
+
+## スマホ向けサイト（GitHub Pages / PWA）
+
+**https://kehorikawa.github.io/arai_snow_st/**
+
+毎朝スマホで今日の雪を確認するための1ページです。`docs/` を GitHub Pages が配信しています。
+
+- **数値ファースト**：3地点の積雪cm・前日比・前日の降雪。観測日を最上段に表示
+- **シーズン通しグラフ**：地点切り替え（Chart.js）
+- **PWA**：ホーム画面に追加するとアドレスバーが消え、**オフラインでも直近の数値が出ます**
+
+### ホーム画面への追加
+
+Chrome（Android）でURLを開き、メニューから「**アプリをインストール**」を選びます
+（「ショートカットを作成」ではなく「インストール」。全画面で開くのは前者だけです）。
+
+### 仕組み
+
+| ファイル | 役割 |
+|---|---|
+| `docs/index.html` | 画面すべて（CSS・JSインライン） |
+| `docs/manifest.json` | アプリ名・アイコン・全画面の指定 |
+| `docs/service-worker.js` | 通信を横取りして保存分を返す。シェルはキャッシュ優先、データはネットワーク優先（1.5秒で打ち切り） |
+| `docs/vendor/chart.umd.min.js` | Chart.js を同梱（オフラインで開けるようにするため、CDNから借りない） |
+| `docs/icons/` | アイコン3枚。`python tools/make_icons.py` で再生成できます |
+
+**パスはすべて相対で書いています。** 公開URLが `/arai_snow_st/` 配下のため、
+ルートから書く（`/manifest.json` など）とすべて404になります。
+
+**`docs/` はドキュメント置き場ではありません。** GitHub Pages の「ブランチから公開」は
+`/` と `/docs` の2択で、この名前は GitHub が決めています。公開したいデータを
+`docs/data/snow_data.json` に置いているのもそのためです。
 
 ## データ収集の自動化（GitHub Actions）
 

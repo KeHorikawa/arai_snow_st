@@ -12,6 +12,7 @@
 | 実装の記録（前半） | [Documents/worklog/2026-09-22_winter-prep-1_collect.md](worklog/2026-09-22_winter-prep-1_collect.md) |
 | 実装の記録（後半） | [Documents/worklog/2026-09-26_winter-prep-1_actions-streamlit.md](worklog/2026-09-26_winter-prep-1_actions-streamlit.md) |
 | cron の遅延観測 | [Documents/worklog/2026-10-05_cron-delay-observation.md](worklog/2026-10-05_cron-delay-observation.md) |
+| 冬支度②（静的サイト＋PWA） | [Documents/worklog/2026-10-05_winter-prep-2_static-site-pwa.md](worklog/2026-10-05_winter-prep-2_static-site-pwa.md) |
 
 ---
 
@@ -24,7 +25,7 @@
 | 機能 | 役割 | 状態 |
 |---|---|---|
 | **GitHub Actions** | 毎朝データを取ってきてコミットする（**データの供給**） | ✅ 稼働中 |
-| **GitHub Pages** | 静的サイトを配信する（**表示の場所**） | ⬜ 冬支度②で着手 |
+| **GitHub Pages** | 静的サイトを配信する（**表示の場所**） | ✅ 稼働中（main / docs） |
 
 **今回作った GitHub Actions は、静的サイトのためのものではない。**
 いま現在は Streamlit版のために働いている。Streamlit版はこれまで自分で市サイトへ取りに行っていたが、
@@ -42,9 +43,9 @@ snow_data_history.csv          docs/data/snow_data.json
 （全18シーズン・8,796行）          （最新シーズンのみ・15KB）
         │                               │
         ▼                               ▼
-   Streamlit版                   静的サイト（冬支度②）
+   Streamlit版                   静的サイト（PWA）
    ローカル / Streamlit Cloud     GitHub Pages
-        ✅ 稼働中                      ⬜ 未着手
+        ✅ 稼働中                      ✅ 稼働中
 ```
 
 サーバーなし・費用ゼロ・コールドスタートなし。**リポジトリがそのままデータの置き場になっている。**
@@ -245,6 +246,7 @@ Pages の制限（リポジトリ1GB・転送100GB/月・ビルド10回/時）�
 
 - **「🔄 データを再読み込み」ボタン**：スクレイピングを外したことで役割が変わった
   （いまは「保存ファイルを読み直す」）。将来、静的サイトへ移行する段階で自然に外せる。急ぐ必要はない
+- **公開URL**：https://kehorikawa.github.io/arai_snow_st/ （main / docs から配信）
 
 ---
 
