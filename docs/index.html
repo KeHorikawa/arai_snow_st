@@ -6,6 +6,22 @@
 <title>妙高の雪</title>
 <meta name="description" content="妙高市の降雪・積雪データ（新井消防署・頸南消防署・妙高市役所 妙高支所）">
 <meta name="theme-color" content="#0d1b2a">
+
+<!-- PWA。実体は manifest.json ／ service-worker.js ／ アイコン画像 の3点 -->
+<link rel="manifest" href="manifest.json">
+<!-- iOS は manifest のアイコンをホーム画面に使わない。これが無いと絵が出ない -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+<!-- 指定しないと /favicon.ico を取りに行って404が1回出る -->
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="妙高の雪">
+
+<!-- defer を付ける。付けないとこのファイルの取得が終わるまで下の処理が始まらず、
+     数値の表示が 1.7 秒ほど遅れる（低速回線での実測）。
+     数値はグラフ部品を待つ必要がない。 -->
+<script src="vendor/chart.umd.min.js" defer></script>
 <style>
   :root {
     --bg: #0d1b2a;
@@ -170,7 +186,6 @@
   <div><a href="https://www.city.myoko.niigata.jp/life-info/snow-info/snow/">出典：妙高市 雪情報</a></div>
 </footer>
 
-<script src="vendor/chart.umd.min.js"></script>
 <script>
 (function () {
   "use strict";
@@ -397,6 +412,15 @@
     buildChart(data, preferred);
   }
 
+  // Chart.js は defer で読み込んでいるので、まだ無いことがある。
+  // 数値の表示はこれを待たない。グラフだけ後から描く。
+  function whenChartReady(fn) {
+    if (typeof Chart !== "undefined") { fn(); return; }
+    document.addEventListener("DOMContentLoaded", function () {
+      if (typeof Chart !== "undefined") fn();
+    });
+  }
+
   // ---------- 読み込み ----------
   function render(data) {
     renderCards(data);
@@ -411,7 +435,7 @@
     // キャッシュから出た古い数値を今朝の数値と誤解させないための最後の砦
     el("updated").textContent = "最終更新 " + fmtUpdated(data.generated_at);
 
-    renderChart(data);
+    whenChartReady(function () { renderChart(data); });
   }
 
   fetch("data/snow_data.json")
@@ -426,6 +450,17 @@
       box.hidden = false;
       box.textContent = "読み込みエラー: " + e.message;
     });
+
+  // Service Worker の登録。相対パスで書くこと。
+  // GitHub Pages のプロジェクトサイトは /arai_snow_st/ 配下に置かれるため、
+  // "/service-worker.js" と書くと404になる。
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("service-worker.js").catch(function (err) {
+        console.warn("Service Worker の登録に失敗しました:", err);
+      });
+    });
+  }
 })();
 </script>
 </body>
