@@ -14,7 +14,7 @@
  */
 
 // 配信物を更新したらここを上げる。古いキャッシュは activate で消える。
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `miyoko-snow-shell-${VERSION}`;
 const DATA_CACHE = `miyoko-snow-data-${VERSION}`;
 
@@ -29,6 +29,12 @@ const SHELL_ASSETS = [
 ];
 
 const DATA_PATH = "data/snow_data.json";
+
+// データの取得をこの時間まで待ち、間に合わなければ保存してある分を先に出す。
+// 「圏外」は通信がすぐ失敗するので困らない。本当に困るのは
+// 「電波が弱いが繋がっている」状態で、失敗するまで何十秒も待たされること。
+// 毎朝3秒で読める道具にするには、待ち時間に上限が要る。
+const DATA_TIMEOUT_MS = 1500;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -58,6 +64,32 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/** データの応答を決める。保存分があれば、通信を待ちすぎない。 */
+function dataResponse(network) {
+  return caches.match("./" + DATA_PATH).then((cached) => {
+    // 保存分が無ければ通信を待つしかない（初回アクセスなど）
+    if (!cached) return network;
+
+    return new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      const finish = (res) => {
+        if (done || !res) return;
+        done = true;
+        if (timer) clearTimeout(timer);
+        resolve(res);
+      };
+
+      // 時間切れ → 保存してある数値を先に出す
+      timer = setTimeout(() => finish(cached), DATA_TIMEOUT_MS);
+
+      network
+        .then((res) => finish(res && res.ok ? res : cached))
+        .catch(() => finish(cached));
+    });
+  });
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
 
@@ -66,17 +98,22 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // ① データ：ネットワーク優先
+  // ① データ：ネットワーク優先。ただし DATA_TIMEOUT_MS で打ち切る
   if (url.pathname.endsWith(DATA_PATH)) {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(DATA_CACHE).then((c) => c.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match("./" + DATA_PATH)))
-    );
+    // 通信はここで始める。時間切れで保存分を返したあとも裏で走り続け、
+    // 返ってきたらキャッシュだけ新しくしておく（次に開いたときに効く）。
+    const network = fetch(req).then((res) => {
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(DATA_CACHE).then((c) => c.put("./" + DATA_PATH, copy));
+      }
+      return res;
+    });
+
+    // 応答を返したあとも Service Worker を生かしておく（裏の更新を完了させるため）。
+    // waitUntil は fetch ハンドラの中で同期的に呼ぶ必要がある。
+    event.waitUntil(network.catch(() => {}));
+    event.respondWith(dataResponse(network));
     return;
   }
 
