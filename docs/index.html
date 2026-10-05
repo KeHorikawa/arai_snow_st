@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>妙高の雪</title>
+<meta name="description" content="妙高市の降雪・積雪データ（新井消防署・頸南消防署・妙高市役所 妙高支所）">
+<meta name="theme-color" content="#0d1b2a">
+<style>
+  :root {
+    --bg: #0d1b2a;
+    --panel: #16263a;
+    --panel-quiet: #121f30;
+    --text: #eaf2fb;
+    --text-dim: #93a7bf;
+    --text-faint: #5f7390;
+    --accent: #7fc4ff;
+    --up: #ff8f6b;
+    --down: #76d2ff;
+    --line: #22384f;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    /* 端末の切り欠き（ノッチ）を避ける */
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    max-width: 560px;
+    margin: 0 auto;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  header { padding: 18px 0 10px; }
+  h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: var(--text-dim);
+  }
+  /* 観測日。これを見落とすと古い数字を今朝の数字と誤解するので、いちばん目立たせる */
+  .observed {
+    margin: 2px 0 0;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .observed .suffix { font-size: 14px; font-weight: 500; color: var(--text-dim); margin-left: 4px; }
+  .notice {
+    margin: 10px 0 0;
+    padding: 9px 11px;
+    border-radius: 8px;
+    background: var(--panel);
+    border-left: 3px solid var(--accent);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+
+  .cards { margin: 14px 0 0; display: grid; gap: 8px; }
+  .card {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 4px 10px;
+  }
+  .card.empty { background: var(--panel-quiet); }
+  .card .name { font-size: 14px; color: var(--text-dim); }
+  .card .depth {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .card .depth .unit { font-size: 15px; font-weight: 500; color: var(--text-dim); margin-left: 2px; }
+  .card.empty .depth { font-size: 28px; color: var(--text-faint); }
+  .card .sub { font-size: 12px; color: var(--text-faint); line-height: 1.5; }
+  .card .diff { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .diff.plus { color: var(--up); }
+  .diff.minus { color: var(--down); }
+  .diff.zero { color: var(--text-dim); }
+
+  section.chart { margin: 22px 0 0; }
+  .chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .chart-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-dim); }
+  .chart-head .range { font-size: 11.5px; color: var(--text-faint); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tabs button {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text-dim);
+    background: var(--panel-quiet);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tabs button[aria-selected="true"] {
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+  .canvas-wrap { position: relative; height: 240px; }
+  .chart-empty { font-size: 12.5px; color: var(--text-faint); padding: 20px 0; }
+
+  footer {
+    margin: 24px 0 0;
+    padding: 14px 0 22px;
+    border-top: 1px solid var(--line);
+    font-size: 11.5px;
+    color: var(--text-faint);
+    line-height: 1.7;
+  }
+  footer a { color: var(--text-dim); }
+  .legend { display: flex; gap: 14px; margin-bottom: 6px; font-size: 11.5px; color: var(--text-faint); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  #error { color: var(--up); font-size: 13px; padding: 14px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>❄ 妙高の雪</h1>
+  <p class="observed" id="observed">読み込み中…</p>
+  <p class="notice" id="notice" hidden></p>
+</header>
+
+<div id="error" hidden></div>
+
+<section class="cards" id="cards"></section>
+
+<section class="chart" id="chartSection" hidden>
+  <div class="chart-head">
+    <h2>シーズンの推移</h2>
+    <span class="range" id="range"></span>
+  </div>
+  <div class="tabs" id="tabs" role="tablist"></div>
+  <div class="legend">
+    <span><i style="background:#4b7fb5"></i>降雪 (cm)</span>
+    <span><i style="background:#ff8f6b"></i>積雪 (cm)</span>
+  </div>
+  <div class="canvas-wrap"><canvas id="chart"></canvas></div>
+  <p class="chart-empty" id="chartEmpty" hidden>このシーズンのデータがまだありません。</p>
+</section>
+
+<footer>
+  <div id="updated"></div>
+  <div>観測時刻 9時／降雪量は前日分、積雪量は当日分</div>
+  <div>「—」は市の記録に値がない日です（ゼロではありません）</div>
+  <div><a href="https://www.city.myoko.niigata.jp/life-info/snow-info/snow/">出典：妙高市 雪情報</a></div>
+</footer>
+
+<script src="vendor/chart.umd.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var LOC_SHORT = {
+    "新井消防署": "新井",
+    "頸南消防署": "頸南",
+    "妙高市役所 妙高支所": "妙高支所"
+  };
+
+  var el = function (id) { return document.getElementById(id); };
+
+  function fmtDate(iso) {
+    var p = String(iso || "").split("-");
+    if (p.length !== 3) return iso || "";
+    return Number(p[0]) + "年" + Number(p[1]) + "月" + Number(p[2]) + "日";
+  }
+
+  function fmtDiff(v) {
+    if (v === null || v === undefined) return null;
+    if (v === 0) return { text: "±0", cls: "zero" };
+    if (v > 0) return { text: "+" + v, cls: "plus" };
+    return { text: String(v), cls: "minus" };
+  }
+
+  function fmtUpdated(iso) {
+    // "2026-09-26T11:37:59+09:00" → "2026-09-26 11:37"
+    var m = String(iso || "").match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+    return m ? m[1] + " " + m[2] : (iso || "不明");
+  }
+
+  // ---------- ① 数値ファースト ----------
+  function renderCards(data) {
+    var cards = el("cards");
+    cards.innerHTML = "";
+
+    var latest = data.latest;
+    if (!latest) {
+      el("observed").textContent = "観測データがまだありません";
+      return;
+    }
+
+    el("observed").innerHTML =
+      fmtDate(latest.observed_date) + '<span class="suffix">の観測</span>';
+
+    // 並び順は locations のまま固定する。
+    // 毎朝見る道具なので、位置が動かないほうが目的の地点を早く見つけられる。
+    (data.locations || []).forEach(function (loc) {
+      var v = (latest.by_location || {})[loc] || {};
+      var hasDepth = v.snowdepth_cm !== null && v.snowdepth_cm !== undefined;
+
+      var card = document.createElement("div");
+      card.className = "card" + (hasDepth ? "" : " empty");
+
+      var name = document.createElement("div");
+      name.className = "name";
+      name.textContent = loc;
+
+      var depth = document.createElement("div");
+      depth.className = "depth";
+      if (hasDepth) {
+        depth.innerHTML = v.snowdepth_cm + '<span class="unit">cm</span>';
+      } else {
+        depth.textContent = "—";
+      }
+
+      var sub = document.createElement("div");
+      sub.className = "sub";
+      if (hasDepth) {
+        var parts = [];
+        var d = fmtDiff(v.snowdepth_diff_cm);
+        if (d) parts.push('前日比 <span class="diff ' + d.cls + '">' + d.text + "</span>");
+        parts.push("降雪 " +
+          (v.snowfall_cm === null || v.snowfall_cm === undefined ? "—" : v.snowfall_cm + "cm"));
+        sub.innerHTML = parts.join("　");
+      } else {
+        sub.textContent = "記録なし";
+      }
+
+      card.appendChild(name);
+      card.appendChild(depth);
+      card.appendChild(sub);
+      cards.appendChild(card);
+    });
+  }
+
+  // ---------- ② シーズン通しグラフ ----------
+  var chart = null;
+
+  function buildChart(data, loc) {
+    var dates = (data.series && data.series.dates) || [];
+    var s = (data.series && data.series[loc]) || {};
+    var labels = dates.map(function (d) {
+      var p = d.split("-");
+      return Number(p[1]) + "/" + Number(p[2]);
+    });
+
+    if (chart) { chart.destroy(); chart = null; }
+
+    chart = new Chart(el("chart").getContext("2d"), {
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            type: "bar",
+            label: "降雪",
+            data: s.snowfall_cm || [],
+            backgroundColor: "#4b7fb5",
+            yAxisID: "y",
+            order: 2
+          },
+          {
+            type: "line",
+            label: "積雪",
+            data: s.snowdepth_cm || [],
+            borderColor: "#ff8f6b",
+            backgroundColor: "#ff8f6b",
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.2,
+            spanGaps: false,
+            yAxisID: "y1",
+            order: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              color: "#5f7390",
+              font: { size: 10 },
+              maxRotation: 0,
+              autoSkip: true,
+              // スマホ幅でラベルが潰れないよう、表示する本数を抑える
+              maxTicksLimit: 6
+            }
+          },
+          y: {
+            position: "left",
+            beginAtZero: true,
+            grid: { color: "#1b2d42" },
+            ticks: { color: "#5f7390", font: { size: 10 }, maxTicksLimit: 5 },
+            title: { display: true, text: "降雪 cm", color: "#5f7390", font: { size: 10 } }
+          },
+          y1: {
+            position: "right",
+            beginAtZero: true,
+            grid: { drawOnChartArea: false },
+            ticks: { color: "#5f7390", font: { size: 10 }, maxTicksLimit: 5 },
+            title: { display: true, text: "積雪 cm", color: "#5f7390", font: { size: 10 } }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: function (items) {
+                var i = items[0].dataIndex;
+                return fmtDate(dates[i]);
+              },
+              label: function (c) {
+                var v = c.parsed.y;
+                return c.dataset.label + ": " + (v === null ? "—" : v + "cm");
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function renderChart(data) {
+    var dates = (data.series && data.series.dates) || [];
+    var section = el("chartSection");
+    section.hidden = false;
+
+    if (dates.length === 0) {
+      el("chartEmpty").hidden = false;
+      el("tabs").hidden = true;
+      el("chart").hidden = true;
+      return;
+    }
+
+    el("range").textContent =
+      fmtDate(dates[0]) + " 〜 " + fmtDate(dates[dates.length - 1]);
+
+    var tabs = el("tabs");
+    tabs.innerHTML = "";
+    var locs = data.locations || [];
+
+    // 既定で開く地点は「最新日に値がある地点」。
+    // 端の季節は1地点しか値がないことが多く、空のグラフを最初に見せないため。
+    var preferred = locs[0];
+    if (data.latest && data.latest.by_location) {
+      for (var i = 0; i < locs.length; i++) {
+        var v = data.latest.by_location[locs[i]];
+        if (v && v.snowdepth_cm !== null && v.snowdepth_cm !== undefined) {
+          preferred = locs[i];
+          break;
+        }
+      }
+    }
+
+    locs.forEach(function (loc) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("role", "tab");
+      b.textContent = LOC_SHORT[loc] || loc;
+      b.setAttribute("aria-selected", String(loc === preferred));
+      b.addEventListener("click", function () {
+        Array.prototype.forEach.call(tabs.children, function (c) {
+          c.setAttribute("aria-selected", String(c === b));
+        });
+        buildChart(data, loc);
+      });
+      tabs.appendChild(b);
+    });
+
+    buildChart(data, preferred);
+  }
+
+  // ---------- 読み込み ----------
+  function render(data) {
+    renderCards(data);
+
+    if (data.is_current_season === false && data.season) {
+      var n = el("notice");
+      n.textContent =
+        "今シーズンの観測はまだ始まっていません（表示は " + data.season + " シーズン）";
+      n.hidden = false;
+    }
+
+    // キャッシュから出た古い数値を今朝の数値と誤解させないための最後の砦
+    el("updated").textContent = "最終更新 " + fmtUpdated(data.generated_at);
+
+    renderChart(data);
+  }
+
+  fetch("data/snow_data.json")
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(render)
+    .catch(function (e) {
+      el("observed").textContent = "データを読み込めませんでした";
+      var box = el("error");
+      box.hidden = false;
+      box.textContent = "読み込みエラー: " + e.message;
+    });
+})();
+</script>
+</body>
+</html>
