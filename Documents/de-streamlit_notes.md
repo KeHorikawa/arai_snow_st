@@ -9,6 +9,7 @@
 | 種類 | ファイル |
 |---|---|
 | 計画の正 | [plans/2026-07-03_de-streamlit_plan.md](../plans/2026-07-03_de-streamlit_plan.md) |
+| 過去年比較の検討 | [plans/2026-10-16_past-season-comparison.md](../plans/2026-10-16_past-season-comparison.md) |
 | 実装の記録（前半） | [Documents/worklog/2026-09-22_winter-prep-1_collect.md](worklog/2026-09-22_winter-prep-1_collect.md) |
 | 実装の記録（後半） | [Documents/worklog/2026-09-26_winter-prep-1_actions-streamlit.md](worklog/2026-09-26_winter-prep-1_actions-streamlit.md) |
 | cron の遅延観測 | [Documents/worklog/2026-10-05_cron-delay-observation.md](worklog/2026-10-05_cron-delay-observation.md) |
