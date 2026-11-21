@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-20T17:39:22+09:00",
+  "generated_at": "2026-11-21T17:21:17+09:00",
   "source_url": "https://www.city.myoko.niigata.jp/docs/88899.html",
   "season": "2026-27",
   "season_status": "in-season",
@@ -10,7 +10,7 @@
     "妙高市役所 妙高支所"
   ],
   "latest": {
-    "observed_date": "2026-11-20",
+    "observed_date": "2026-11-21",
     "by_location": {
       "新井消防署": {
         "snowdepth_cm": null,
@@ -18,8 +18,8 @@
         "snowfall_cm": null
       },
       "頸南消防署": {
-        "snowdepth_cm": 1,
-        "snowdepth_diff_cm": null,
+        "snowdepth_cm": 5,
+        "snowdepth_diff_cm": 4,
         "snowfall_cm": null
       },
       "妙高市役所 妙高支所": {
@@ -50,7 +50,8 @@
       "2026-11-17",
       "2026-11-18",
       "2026-11-19",
-      "2026-11-20"
+      "2026-11-20",
+      "2026-11-21"
     ],
     "新井消防署": {
       "snowfall_cm": [
@@ -73,9 +74,11 @@
         null,
         null,
         null,
+        null,
         null
       ],
       "snowdepth_cm": [
+        null,
         null,
         null,
         null,
@@ -119,6 +122,7 @@
         null,
         null,
         1,
+        5,
         null
       ],
       "snowdepth_cm": [
@@ -141,7 +145,8 @@
         null,
         null,
         null,
-        1
+        1,
+        5
       ]
     },
     "妙高市役所 妙高支所": {
@@ -165,9 +170,11 @@
         null,
         null,
         null,
+        null,
         null
       ],
       "snowdepth_cm": [
+        null,
         null,
         null,
         null,
