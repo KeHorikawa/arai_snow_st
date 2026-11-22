@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 # ==========
 # 定数
 # ==========
-LOCATIONS: List[str] = ["新井消防署", "頸南消防署", "妙高市役所 妙高支所"]
+# 2026-27シーズンから3地点目が「関山（気象庁観測所）」に替わった（collect.py の LOCATIONS 参照）
+LOCATIONS: List[str] = ["新井消防署", "頸南消防署", "妙高市役所 妙高支所", "関山"]
 
 CSV_FILE = "data_urls.csv"
 HISTORY_CSV_FILE = "snow_data_history.csv"

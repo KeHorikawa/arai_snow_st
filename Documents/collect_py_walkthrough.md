@@ -46,7 +46,7 @@ Python を書き始めたばかりの人でも読めるよう、使われてい�
 
 ## 1. このスクリプトは何をするのか
 
-妙高市の Web サイトに掲載されている「降積雪観測データ」（新井消防署・頸南消防署・妙高支所の3地点の降雪量と積雪量）を取ってきて、ファイルに保存するスクリプトです。
+妙高市の Web サイトに掲載されている「降積雪観測データ」（新井消防署・頸南消防署・関山の3地点の降雪量と積雪量。関山は2025年度までは妙高支所）を取ってきて、ファイルに保存するスクリプトです。
 
 GitHub Actions（[.github/workflows/collect.yml](../.github/workflows/collect.yml)）から毎朝1回自動で実行されます。
 
@@ -555,7 +555,7 @@ df.reindex(columns=HISTORY_COLS).to_csv(HISTORY_CSV, index=False)
   "season": "2025-26",
   "season_status": "finished",
   "is_current_season": false,
-  "locations": ["新井消防署", "頸南消防署", "妙高市役所 妙高支所"],
+  "locations": ["新井消防署", "頸南消防署", "関山"],
   "latest": {
     "observed_date": "2026-03-31",
     "by_location": {
@@ -565,6 +565,10 @@ df.reindex(columns=HISTORY_COLS).to_csv(HISTORY_CSV, index=False)
   "series": {
     "dates": ["2025-12-01", "2025-12-02", "..."],
     "新井消防署": { "snowfall_cm": [0, 5, "..."], "snowdepth_cm": [0, 5, "..."] }
+  },
+  "previous": {
+    "season": "2024-25",
+    "series": { "dates": ["..."], "新井消防署": { "...": "..." } }
   }
 }
 ```
@@ -578,6 +582,9 @@ df.reindex(columns=HISTORY_COLS).to_csv(HISTORY_CSV, index=False)
 5. **末尾の空白日を落とす** … 最後に値がある日より後の日（全部欠測）は除く
 6. **`series` を作る** … 日付の一覧と、地点ごとに日付順に並んだ降雪量・積雪量の配列
 7. **`latest` を作る** … 最も新しい観測日の各地点の値と、**前日比**（「暦の前日」ではなく「値がある直前の観測日」との差）
+8. **`previous` を作る** … 1つ前のシーズンの `series`（グラフの「前年度」ボタン用）。既存のキーは変えず**追加だけ**にしてあるので、キャッシュに残った古い画面が新しいJSONを読んでも壊れない
+
+なお、地点名はこの段階でサイト用にまとめる。CSVの「妙高市役所 妙高支所」（2025年度まで）と「関山」（2026年度から）は、どちらも `"関山"` として出す（`SITE_LOCATION_OF`）。
 8. **`source_url`** … 最新観測日が載っている月ページのURL
 
 | コード | 説明 |

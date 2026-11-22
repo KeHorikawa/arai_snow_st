@@ -14,7 +14,7 @@
  */
 
 // 配信物を更新したらここを上げる。古いキャッシュは activate で消える。
-const VERSION = "v2";
+const VERSION = "v3";
 const SHELL_CACHE = `miyoko-snow-shell-${VERSION}`;
 const DATA_CACHE = `miyoko-snow-data-${VERSION}`;
 
