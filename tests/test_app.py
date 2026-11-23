@@ -5,8 +5,12 @@
     python tests/test_app.py     そのまま実行（pytest不要）
     pytest tests/test_app.py     pytest があればこちらでも動く
 
-前提：`snow_data_history.csv` と `data_urls.csv` がリポジトリ直下にあること。
+前提：`snow_data_history.csv` がリポジトリ直下にあること。
 テストは読むだけで、ファイルを書き換えない。
+
+履歴CSVは毎朝増えていく。テストに「今の最新月」を直書きすると、
+季節が変わっただけで落ちる（2026年11月に実際に起きた）。
+最新月はCSVから求め、件数を確かめるテストには値のそろった過去の月を使う。
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,8 +30,19 @@ APP_FILE = str(BASE_DIR / "main.py")
 # 市のページにその月の観測値が入っていないケースで、不具合ではない。
 ALL_MISSING = (2014, 11, "新井消防署")
 
-# これまで「最新月」として毎回Web取得していた月。履歴CSVから読めるようになった。
-LATEST_MONTH = (2026, 3)
+# 3地点とも値がそろっていると分かっている過去の月。グラフの件数を確かめるのに使う。
+# 3地点目は CSV では「妙高市役所 妙高支所」だが、画面では「関山」として読めること。
+FULL_MONTH = (2025, 1)
+
+LOCATIONS = ["新井消防署", "頸南消防署", "関山"]
+
+
+def _latest_month_with_data() -> tuple[int, int]:
+    """履歴CSVで、観測値が1つでもある最新の（年, 月）"""
+    df = pd.read_csv(BASE_DIR / "snow_data_history.csv")
+    df = df[df["snowfall_cm"].notna() | df["snowdepth_cm"].notna()]
+    last = df.sort_values(["year", "month"]).iloc[-1]
+    return int(last["year"]), int(last["month"])
 
 
 def _run() -> AppTest:
@@ -37,6 +53,14 @@ def _run() -> AppTest:
 
 def _charts(at: AppTest) -> int:
     return Counter(e.type for e in at.main)["plotly_chart"]
+
+
+def _shown(at: AppTest) -> int:
+    """表示された条件の件数（グラフ＋「欠測」「未収集」の案内）。
+
+    シーズン初めは地点によって全日欠測のことがあり、グラフの数だけでは数えられない。
+    """
+    return _charts(at) + len(at.info)
 
 
 def _select(at: AppTest, index: int, year: int, month: int, location: str) -> AppTest:
@@ -56,11 +80,12 @@ def test_起動して例外が出ない():
     assert [t.value for t in at.title] == ["❄️ 妙高市 降雪・積雪データ可視化"]
 
 
-def test_既定の表示はグラフ3件():
+def test_既定の表示は3件で地点は3つ():
     at = _run()
-    assert _charts(at) == 3
-    assert len(at.error) == 0
-    assert len(at.info) == 0
+    assert len(at.error) == 0, [e.value for e in at.error]
+    # 季節の初めは全日欠測の地点があるので、グラフと案内を合わせて3件
+    assert _shown(at) == 3
+    assert [sb.value for sb in at.sidebar.selectbox[2::3]] == LOCATIONS
 
 
 def test_サイドバーの構成():
@@ -69,26 +94,27 @@ def test_サイドバーの構成():
     assert len(at.sidebar.selectbox) == 9
     assert [sb.label for sb in at.sidebar.selectbox[:3]] == ["年", "月", "観測地点"]
     assert [b.label for b in at.sidebar.button] == ["🔄 データを再読み込み"]
+    assert list(at.sidebar.selectbox[2].options) == LOCATIONS
 
-    # 年の選択肢は data_urls.csv 由来（自動生成で2009年まで遡る）。
+    # 年の選択肢は履歴CSV由来。市の一覧から2009年12月のリンクが外れても2009年から選べること。
     # AppTest は選択肢を文字列で返すため、数値に直して比べる。
     years = [int(y) for y in at.sidebar.selectbox[0].options]
     assert len(years) >= 18, years
     assert min(years) == 2009, years
 
 
-def test_既定の選択は最新公開月():
+def test_既定の選択は値のある最新月():
     at = _run()
-    year, month = LATEST_MONTH
+    year, month = _latest_month_with_data()
     assert at.sidebar.selectbox[0].value == year
     assert at.sidebar.selectbox[1].value == month
 
 
-def test_最新月がCSVから表示できる():
-    """以前は毎回Web取得していた月。スクレイピングなしで描けることを確かめる。"""
+def test_値のそろった月は3件ともグラフになる():
     at = _run()
-    year, month = LATEST_MONTH
-    _select(at, 0, year, month, "新井消防署")
+    year, month = FULL_MONTH
+    for i, loc in enumerate(LOCATIONS):
+        _select(at, i, year, month, loc)
     assert _charts(at) == 3
     assert len(at.error) == 0
     assert len(at.info) == 0
@@ -101,27 +127,26 @@ def test_全日欠測の月は案内を出す():
 
     messages = [i.value for i in at.info]
     assert any("全日が欠測" in m for m in messages), messages
-    assert any(f"{year}年{month}月" in m for m in messages), messages
-    # その条件だけグラフが出ず、残り2件は描画される
-    assert _charts(at) == 2
+    assert any(f"{year}年{month}月 / {location}" in m for m in messages), messages
+    assert _shown(at) == 3
 
 
 def test_条件の重複は警告して1件にまとめる():
     at = _run()
-    year, month = LATEST_MONTH
+    year, month = FULL_MONTH
     _select(at, 0, year, month, "新井消防署")
     _select(at, 1, year, month, "新井消防署")
 
     warnings = [w.value for w in at.sidebar.warning]
     assert any("重複しています" in w for w in warnings), warnings
-    assert _charts(at) == 2
+    assert _shown(at) == 2
 
 
 def test_再読み込みボタンが動く():
     at = _run()
     at.sidebar.button[0].click().run()
     assert not at.exception, f"例外が発生しました: {at.exception}"
-    assert _charts(at) == 3
+    assert _shown(at) == 3
 
 
 class _LogCatcher(logging.Handler):

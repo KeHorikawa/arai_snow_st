@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>妙高の雪</title>
-<meta name="description" content="妙高市の降雪・積雪データ（新井消防署・頸南消防署・妙高市役所 妙高支所）">
+<meta name="description" content="妙高市の降雪・積雪データ（新井消防署・頸南消防署・関山）">
 <meta name="theme-color" content="#0d1b2a">
 
 <!-- PWA。実体は manifest.json ／ service-worker.js ／ アイコン画像 の3点 -->
@@ -136,6 +136,15 @@
     border-color: var(--accent);
     font-weight: 700;
   }
+  /* 年度の切り替え。地点タブと見分けがつくよう、小さく控えめにする。
+     .tabs の選択色より後に書くこと（同じ強さのセレクタなので、後に書いたほうが勝つ） */
+  .season-tabs { margin-bottom: 8px; }
+  .season-tabs button { padding: 6px 4px; font-size: 11.5px; }
+  .season-tabs button[aria-selected="true"] {
+    color: var(--text);
+    background: var(--panel);
+    border-color: var(--accent);
+  }
   .canvas-wrap { position: relative; height: 240px; }
   .chart-empty { font-size: 12.5px; color: var(--text-faint); padding: 20px 0; }
 
@@ -170,6 +179,7 @@
     <h2>シーズンの推移</h2>
     <span class="range" id="range"></span>
   </div>
+  <div class="tabs season-tabs" id="seasonTabs" role="tablist" hidden></div>
   <div class="tabs" id="tabs" role="tablist"></div>
   <div class="legend">
     <span><i style="background:#4b7fb5"></i>降雪 (cm)</span>
@@ -183,6 +193,7 @@
   <div id="updated"></div>
   <div>観測時刻 9時／降雪量は前日分、積雪量は当日分</div>
   <div>「—」は市の記録に値がない日です（ゼロではありません）</div>
+  <div>関山は、2025年度までは妙高市役所 妙高支所、2026年度からは気象庁 関山観測所の値です</div>
   <div><a href="https://www.city.myoko.niigata.jp/life-info/snow-info/snow/">出典：妙高市 雪情報</a></div>
 </footer>
 
@@ -193,7 +204,7 @@
   var LOC_SHORT = {
     "新井消防署": "新井",
     "頸南消防署": "頸南",
-    "妙高市役所 妙高支所": "妙高支所"
+    "関山": "関山"
   };
 
   var el = function (id) { return document.getElementById(id); };
@@ -275,9 +286,9 @@
   // ---------- ② シーズン通しグラフ ----------
   var chart = null;
 
-  function buildChart(data, loc) {
-    var dates = (data.series && data.series.dates) || [];
-    var s = (data.series && data.series[loc]) || {};
+  function buildChart(series, loc) {
+    var dates = series.dates || [];
+    var s = series[loc] || {};
     var labels = dates.map(function (d) {
       var p = d.split("-");
       return Number(p[1]) + "/" + Number(p[2]);
@@ -362,23 +373,33 @@
     });
   }
 
+  // 年度の一覧。[0] が表示中のシーズン（今年度）、[1] があれば前年度。
+  // previous は後から足したキーなので、無い（古いJSONがキャッシュから出た）場合も動くようにする。
+  function seasonsOf(data) {
+    var list = [{
+      label: data.is_current_season ? "今年度" : "",
+      season: data.season,
+      series: data.series || { dates: [] }
+    }];
+    if (data.previous && data.previous.series && (data.previous.series.dates || []).length) {
+      list.push({
+        label: data.is_current_season ? "前年度" : "",
+        season: data.previous.season,
+        series: data.previous.series
+      });
+    }
+    return list;
+  }
+
+  function seasonButtonText(s) {
+    return s.label ? s.label + "（" + s.season + "）" : String(s.season || "");
+  }
+
   function renderChart(data) {
-    var dates = (data.series && data.series.dates) || [];
     var section = el("chartSection");
     section.hidden = false;
 
-    if (dates.length === 0) {
-      el("chartEmpty").hidden = false;
-      el("tabs").hidden = true;
-      el("chart").hidden = true;
-      return;
-    }
-
-    el("range").textContent =
-      fmtDate(dates[0]) + " 〜 " + fmtDate(dates[dates.length - 1]);
-
-    var tabs = el("tabs");
-    tabs.innerHTML = "";
+    var seasons = seasonsOf(data);
     var locs = data.locations || [];
 
     // 既定で開く地点は「最新日に値がある地点」。
@@ -394,22 +415,64 @@
       }
     }
 
-    locs.forEach(function (loc) {
-      var b = document.createElement("button");
-      b.type = "button";
-      b.setAttribute("role", "tab");
-      b.textContent = LOC_SHORT[loc] || loc;
-      b.setAttribute("aria-selected", String(loc === preferred));
-      b.addEventListener("click", function () {
-        Array.prototype.forEach.call(tabs.children, function (c) {
-          c.setAttribute("aria-selected", String(c === b));
-        });
-        buildChart(data, loc);
-      });
-      tabs.appendChild(b);
-    });
+    // 年度と地点は別々に選ぶ。年度を切り替えても地点はそのまま。
+    var state = { season: 0, loc: preferred };
 
-    buildChart(data, preferred);
+    function draw() {
+      var series = seasons[state.season].series;
+      var dates = series.dates || [];
+      var empty = dates.length === 0;
+
+      el("chartEmpty").hidden = !empty;
+      el("tabs").hidden = empty;
+      el("chart").hidden = empty;
+      el("range").textContent = empty ? "" :
+        fmtDate(dates[0]) + " 〜 " + fmtDate(dates[dates.length - 1]);
+
+      if (empty) {
+        if (chart) { chart.destroy(); chart = null; }
+        return;
+      }
+      buildChart(series, state.loc);
+    }
+
+    function makeTabs(box, items, isSelected, onPick) {
+      box.innerHTML = "";
+      items.forEach(function (item) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("role", "tab");
+        b.textContent = item.text;
+        b.setAttribute("aria-selected", String(isSelected(item)));
+        b.addEventListener("click", function () {
+          Array.prototype.forEach.call(box.children, function (c) {
+            c.setAttribute("aria-selected", String(c === b));
+          });
+          onPick(item);
+          draw();
+        });
+        box.appendChild(b);
+      });
+    }
+
+    // 前年度が無ければ年度タブは出さない（1つだけのタブは押しても何も起きないため）
+    var seasonTabs = el("seasonTabs");
+    seasonTabs.hidden = seasons.length < 2;
+    makeTabs(
+      seasonTabs,
+      seasons.map(function (s, i) { return { text: seasonButtonText(s), index: i }; }),
+      function (item) { return item.index === state.season; },
+      function (item) { state.season = item.index; }
+    );
+
+    makeTabs(
+      el("tabs"),
+      locs.map(function (loc) { return { text: LOC_SHORT[loc] || loc, loc: loc }; }),
+      function (item) { return item.loc === state.loc; },
+      function (item) { state.loc = item.loc; }
+    );
+
+    draw();
   }
 
   // Chart.js は defer で読み込んでいるので、まだ無いことがある。

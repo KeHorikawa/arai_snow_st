@@ -50,11 +50,35 @@ logger = logging.getLogger("collect")
 BASE_URL = "https://www.city.myoko.niigata.jp"
 INDEX_URL = "https://www.city.myoko.niigata.jp/life-info/snow-info/snow/"
 
-LOCATIONS: List[str] = ["新井消防署", "頸南消防署", "妙高市役所 妙高支所"]
+# 履歴CSVに記録する観測所名（並び順はCSVの行の並びにも使う）。
+# 2026-27シーズンから、市の表の3列目が「妙高市役所 妙高支所」から
+# 「関山（気象庁観測所）」に替わった。計測器が別物なので、CSVでは名前を分けて残す。
+LOCATIONS: List[str] = ["新井消防署", "頸南消防署", "妙高市役所 妙高支所", "関山"]
 
-# 2009年12月のページだけ「頚南消防署」（異体字）になっている。
-# 行の出力は列位置で決まるので実害はないが、テーブル判定のために表記を寄せる。
-LOCATION_NORMALIZE = {"頚": "頸"}
+# 表の見出しの文字（空白を除き、異体字を寄せた後）→ CSVに記録する観測所名。
+# 列と観測所の対応は、列の位置ではなく見出しの名前で決める。
+# 位置で決めると、観測所が入れ替わったときに別の地点の数字を黙って記録してしまうため。
+# ここに無い名前が見出しに出てきたら、推測せずに失敗させる。
+STATION_ALIASES: Dict[str, str] = {
+    "新井消防署": "新井消防署",
+    "頸南消防署": "頸南消防署",
+    "妙高市役所妙高支所": "妙高市役所 妙高支所",
+    "関山(気象庁観測所)": "関山",
+    "関山": "関山",
+}
+
+# 2009年12月のページだけ「頚南消防署」（異体字）になっている。全角括弧も半角に寄せる。
+LOCATION_NORMALIZE = {"頚": "頸", "（": "(", "）": ")"}
+
+# サイト（snow_data.json）に出す地点。妙高支所の所在地も関山なので、
+# 画面では両方を「関山」として1本の地点にまとめる（CSVは区別したまま）。
+SITE_LOCATIONS: List[str] = ["新井消防署", "頸南消防署", "関山"]
+SITE_LOCATION_OF: Dict[str, str] = {
+    "新井消防署": "新井消防署",
+    "頸南消防署": "頸南消防署",
+    "妙高市役所 妙高支所": "関山",
+    "関山": "関山",
+}
 
 BASE_DIR = Path(__file__).resolve().parent
 HISTORY_CSV = BASE_DIR / "snow_data_history.csv"
@@ -212,19 +236,46 @@ def _normalize(text: str) -> str:
 
 
 def _pick_data_table(soup: BeautifulSoup) -> Optional[BeautifulSoup]:
-    """観測所名が含まれるテーブルを優先して選ぶ。無ければ最初のテーブル。"""
+    """「観測所」の見出しを持つテーブルを優先して選ぶ。無ければ最初のテーブル。
+
+    観測所名そのものでは探さない。観測所が替わると見つからなくなるため。
+    名前の検査は _read_stations() でまとめて行う。
+    """
     tables = soup.find_all("table")
     if not tables:
         return None
 
-    normalized_locations = [_normalize(loc) for loc in LOCATIONS]
     for tbl in tables:
-        text = _normalize(tbl.get_text(" ", strip=True))
-        if all(loc in text for loc in normalized_locations):
+        if "観測所" in _normalize(tbl.get_text(" ", strip=True)):
             return tbl
 
-    logger.warning("観測所名がそろったテーブルが見つからないため、最初のテーブルを使います")
+    logger.warning("「観測所」の見出しを持つテーブルが見つからないため、最初のテーブルを使います")
     return tables[0]
+
+
+def _read_stations(table, url: str) -> List[str]:
+    """見出し行から、左から順の観測所名（CSVに記録する名前）を読む。
+
+    見出しは「観測所 | 新井消防署 | 頸南消防署 | 関山（気象庁観測所）」の形
+    （観測所名のセルは colspan=2 で、下の行の「降雪・積雪」2列にかかる）。
+    知らない名前があれば CollectError。間違った名前で記録するより、止まって知らせるほうがよい。
+    """
+    for row in table.find_all("tr"):
+        cells = [_normalize(c.get_text(" ", strip=True)) for c in row.find_all(["td", "th"])]
+        if not cells or cells[0] != "観測所":
+            continue
+        names = [c for c in cells[1:] if c]
+        unknown = [n for n in names if n not in STATION_ALIASES]
+        if unknown:
+            raise CollectError(
+                f"知らない観測所名が見出しにあります: {unknown}（STATION_ALIASES に追加が必要）: {url}"
+            )
+        stations = [STATION_ALIASES[n] for n in names]
+        if len(stations) != 3 or len(set(stations)) != 3:
+            raise CollectError(f"観測所の見出しが想定（3地点）と違います: {names}: {url}")
+        return stations
+
+    raise CollectError(f"観測所の見出し行が見つかりません（HTML構造の変更の可能性）: {url}")
 
 
 def _cell_text(cell) -> str:
@@ -274,6 +325,7 @@ def parse_month_page(html: str, year: int, month: int, url: str) -> pd.DataFrame
     if len(rows) < 3:
         raise CollectError(f"テーブル行数が少なすぎます（{len(rows)}行）: {url}")
 
+    stations = _read_stations(table, url)
     data_rows = []
 
     # ヘッダーは基本2行想定。ただし壊れにくいよう、日付列が取れた行だけ採用する
@@ -294,8 +346,8 @@ def parse_month_page(html: str, year: int, month: int, url: str) -> pd.DataFrame
             logger.debug(f"実在しない日付なので無視します: {year}年{month}月{day}日")
             continue
 
-        # 実際の列順: [日, 降雪1, 積雪1, 降雪2, 積雪2, 降雪3, 積雪3]
-        for i, location in enumerate(LOCATIONS):
+        # 実際の列順: [日, 降雪1, 積雪1, 降雪2, 積雪2, 降雪3, 積雪3]（1〜3は見出しの並び）
+        for i, location in enumerate(stations):
             snowfall_idx = i * 2 + 1
             snowdepth_idx = i * 2 + 2
 
@@ -414,19 +466,38 @@ def _values_equal(a, b) -> bool:
 
 
 def upsert_history(history: pd.DataFrame, new_df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
-    """(year, month, day, location) をキーに、取得した値で置き換える。
+    """取得した月の行を、その月まるごと新しい内容で置き換える。
 
-    戻り値: (更新後の履歴, 追加または変更された行数)
+    月ページはその月の全日・全地点を載せた「正」なので、月単位で入れ替えてよい。
+    キー単位の上書きだけだと、ページから消えた行（例：観測所が替わる前の名前で
+    記録してしまった行）が履歴に残り続ける。月ごと入れ替えればそれも消える。
+    行が大きく減る取り違えは、手前の check_consistency() で止めている。
+
+    戻り値: (更新後の履歴, 追加・変更・削除された行数)
     """
     if new_df.empty:
         return history, 0
 
-    old_map = {}
+    fetched_months = set(zip(new_df["year"], new_df["month"]))
     if not history.empty:
-        for row in history.itertuples(index=False):
-            old_map[(row.year, row.month, row.day, row.location)] = (row.snowfall_cm, row.snowdepth_cm)
+        in_fetched = [(y, m) in fetched_months for y, m in zip(history["year"], history["month"])]
+        new_keys = set(zip(new_df["year"], new_df["month"], new_df["day"], new_df["location"]))
+        stale = history[in_fetched]
+        removed = sum(
+            1 for k in zip(stale["year"], stale["month"], stale["day"], stale["location"]) if k not in new_keys
+        )
+        if removed:
+            logger.info(f"取得した月のページに無い行を履歴から除きます: {removed}行")
+        history = history[[not x for x in in_fetched]]
+    else:
+        stale = history
+        removed = 0
 
-    changed = 0
+    old_map = {}
+    for row in stale.itertuples(index=False):
+        old_map[(row.year, row.month, row.day, row.location)] = (row.snowfall_cm, row.snowdepth_cm)
+
+    changed = removed
     for row in new_df.itertuples(index=False):
         key = (row.year, row.month, row.day, row.location)
         before = old_map.get(key)
@@ -465,11 +536,60 @@ def _num(value) -> Optional[float]:
     return int(f) if f.is_integer() else f
 
 
+def _season_frame(df: pd.DataFrame, fy: int) -> pd.DataFrame:
+    """1シーズン分を、サイトの地点名・日付付きで取り出す（値のある最終日より後は落とす）。"""
+    season_df = df[df["fy"] == fy].copy()
+    season_df["location"] = season_df["location"].map(SITE_LOCATION_OF)
+    season_df = season_df.dropna(subset=["location"])
+    season_df["date"] = pd.to_datetime(
+        dict(year=season_df["year"], month=season_df["month"], day=season_df["day"]),
+        errors="coerce",
+    )
+    season_df = season_df.dropna(subset=["date"])
+
+    # 同じ日に「妙高支所」と「関山」の両方の行があると、どちらも「関山」になって重複する
+    # （切り替わりの月に古い名前の行が残っていた場合）。値のある行を優先して1行に絞る。
+    season_df["_has"] = season_df["snowfall_cm"].notna() | season_df["snowdepth_cm"].notna()
+    season_df = (
+        season_df.sort_values(["date", "_has"], kind="mergesort")
+        .drop_duplicates(subset=["date", "location"], keep="last")
+        .drop(columns="_has")
+    )
+
+    dated_values = season_df[season_df["snowfall_cm"].notna() | season_df["snowdepth_cm"].notna()]
+    if dated_values.empty:
+        return season_df.iloc[0:0]
+    return season_df[season_df["date"] <= dated_values["date"].max()]
+
+
+def _build_series(season_df: pd.DataFrame) -> Dict:
+    """グラフ用の series（dates と、地点ごとの降雪・積雪の配列）を作る。"""
+    dates = sorted(season_df["date"].unique())
+    series: Dict = {"dates": [pd.Timestamp(d).strftime("%Y-%m-%d") for d in dates]}
+    for loc in SITE_LOCATIONS:
+        loc_df = season_df[season_df["location"] == loc].set_index("date")
+        snowfall, snowdepth = [], []
+        for d in dates:
+            if d in loc_df.index:
+                row = loc_df.loc[d]
+                snowfall.append(_num(row["snowfall_cm"]))
+                snowdepth.append(_num(row["snowdepth_cm"]))
+            else:
+                snowfall.append(None)
+                snowdepth.append(None)
+        series[loc] = {"snowfall_cm": snowfall, "snowdepth_cm": snowdepth}
+    return series
+
+
 def build_snow_data(history: pd.DataFrame, url_map: Dict[Tuple[int, int], str], today: date) -> Dict:
     """最新データのあるシーズンから、静的サイト用のJSONを組む。
 
     「今シーズン」ではなく「最も新しくデータがあるシーズン」を入れる。
     オフシーズンに空のJSONを出すと、次回の静的サイトを実データで試せなくなるため。
+
+    その1つ前のシーズンを "previous" に入れる（グラフの年度切り替え用）。
+    既存のキーは変えず、追加だけにしている。Service Worker のキャッシュで
+    古いHTMLと新しいJSONが組み合わさっても、古いHTMLは previous を無視するだけで壊れない。
     """
     generated_at = datetime.now(JST).isoformat(timespec="seconds")
     cur_fy = current_fiscal_year(today)
@@ -480,11 +600,12 @@ def build_snow_data(history: pd.DataFrame, url_map: Dict[Tuple[int, int], str], 
         "season": None,
         "season_status": "no-data",
         "is_current_season": False,
-        "locations": LOCATIONS,
+        "locations": SITE_LOCATIONS,
         "latest": None,
         "series": {"dates": []},
+        "previous": None,
     }
-    for loc in LOCATIONS:
+    for loc in SITE_LOCATIONS:
         base["series"][loc] = {"snowfall_cm": [], "snowdepth_cm": []}
 
     if history.empty:
@@ -500,44 +621,24 @@ def build_snow_data(history: pd.DataFrame, url_map: Dict[Tuple[int, int], str], 
         return base
     fy = int(seasons_with_data.max())
 
-    season_df = df[df["fy"] == fy].copy()
-    season_df["date"] = pd.to_datetime(
-        dict(year=season_df["year"], month=season_df["month"], day=season_df["day"]),
-        errors="coerce",
-    )
-    season_df = season_df.dropna(subset=["date"]).sort_values("date")
-
     base["season"] = season_label(fy)
     base["is_current_season"] = fy == cur_fy
     base["season_status"] = "in-season" if fy == cur_fy else "finished"
 
-    # 値のある日付だけを対象に、末尾の全欠測日を落とす
-    dated_values = season_df[season_df["snowfall_cm"].notna() | season_df["snowdepth_cm"].notna()]
-    if dated_values.empty:
+    prev_df = _season_frame(df, fy - 1)
+    if not prev_df.empty:
+        base["previous"] = {"season": season_label(fy - 1), "series": _build_series(prev_df)}
+
+    season_df = _season_frame(df, fy)
+    if season_df.empty:
         return base
-    last_date = dated_values["date"].max()
-    season_df = season_df[season_df["date"] <= last_date]
-
-    dates = sorted(season_df["date"].unique())
-    base["series"]["dates"] = [pd.Timestamp(d).strftime("%Y-%m-%d") for d in dates]
-
-    for loc in LOCATIONS:
-        loc_df = season_df[season_df["location"] == loc].set_index("date")
-        snowfall, snowdepth = [], []
-        for d in dates:
-            if d in loc_df.index:
-                row = loc_df.loc[d]
-                snowfall.append(_num(row["snowfall_cm"]))
-                snowdepth.append(_num(row["snowdepth_cm"]))
-            else:
-                snowfall.append(None)
-                snowdepth.append(None)
-        base["series"][loc] = {"snowfall_cm": snowfall, "snowdepth_cm": snowdepth}
+    last_date = season_df["date"].max()
+    base["series"] = _build_series(season_df)
 
     # latest: 「今日」ではなく「値がある最も新しい観測日」
     observed = pd.Timestamp(last_date)
     by_location = {}
-    for loc in LOCATIONS:
+    for loc in SITE_LOCATIONS:
         loc_df = season_df[season_df["location"] == loc].set_index("date").sort_index()
         row = loc_df.loc[observed] if observed in loc_df.index else None
         snowdepth = _num(row["snowdepth_cm"]) if row is not None else None

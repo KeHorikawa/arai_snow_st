@@ -16,9 +16,13 @@ logger = logging.getLogger(__name__)
 # ==========
 # 定数
 # ==========
-LOCATIONS: List[str] = ["新井消防署", "頸南消防署", "妙高市役所 妙高支所"]
+# 画面で選べる観測地点。静的サイトと同じ3地点にそろえる。
+# 2026-27シーズンから市の表の3列目が「妙高市役所 妙高支所」→「関山（気象庁観測所）」に替わった。
+# 妙高支所も所在地は関山なので、画面では両方を「関山」として1本にまとめる
+# （履歴CSVは区別したまま。collect.py の LOCATIONS / SITE_LOCATION_OF 参照）。
+LOCATIONS: List[str] = ["新井消防署", "頸南消防署", "関山"]
+LOCATION_ALIASES = {"妙高市役所 妙高支所": "関山"}
 
-CSV_FILE = "data_urls.csv"
 HISTORY_CSV_FILE = "snow_data_history.csv"
 
 HISTORY_REQUIRED_COLS = ["year", "month", "day", "location", "snowfall_cm", "snowdepth_cm"]
@@ -29,27 +33,6 @@ HISTORY_REQUIRED_COLS = ["year", "month", "day", "location", "snowfall_cm", "sno
 # ==========
 # データの取得は collect.py（GitHub Actions が毎朝実行）が行う。
 # このアプリは保存されたファイルを読むだけで、市サイトへは取りに行かない。
-@st.cache_data(ttl=3600)
-def load_url_data() -> pd.DataFrame:
-    """URL一覧CSVファイルを読み込む（列: 年, 月, URL を想定）
-
-    このアプリでは年・月の選択肢としてのみ使う（URLは参照しない）。
-    ファイル自体は collect.py が毎朝インデックスページから再生成する。
-    """
-    try:
-        df = pd.read_csv(CSV_FILE)
-        # 最低限の列チェック
-        required = {"年", "月", "URL"}
-        if not required.issubset(df.columns):
-            st.error(f"{CSV_FILE} に必要な列（年, 月, URL）がありません。")
-            return pd.DataFrame()
-        return df
-    except Exception as e:
-        logger.error(f"CSVファイルの読み込みに失敗: {e}")
-        st.error("データURLの読み込みに失敗しました")
-        return pd.DataFrame()
-
-
 @st.cache_data(ttl=3600)
 def load_history_data() -> pd.DataFrame:
     """観測データCSVファイルを読み込む（無ければ空DataFrame）"""
@@ -75,8 +58,8 @@ def load_history_data() -> pd.DataFrame:
         df["month"] = df["month"].astype(int)
         df["day"] = df["day"].astype(int)
 
-        # location は文字列で統一
-        df["location"] = df["location"].astype(str)
+        # location は文字列で統一し、画面用の地点名にまとめる
+        df["location"] = df["location"].astype(str).replace(LOCATION_ALIASES)
 
         return df
 
@@ -89,17 +72,32 @@ def load_history_data() -> pd.DataFrame:
 
 
 # ==========
-# 最新公開月（URL一覧ベース）
+# 年月の選択肢（履歴CSVベース）
 # ==========
-def get_latest_available_month(url_df: pd.DataFrame) -> Tuple[int, int]:
-    """URL一覧から、最新の（年,月）を返す"""
-    if url_df.empty:
+# 選択肢は data_urls.csv ではなく履歴CSVから作る。
+# data_urls.csv は市のトップページの一覧を写したもので、市が古いリンクを一覧から外すと
+# （2026年11月に2009年12月分が外れた）、データは残っているのに選べなくなるため。
+def get_available_months(history_df: pd.DataFrame) -> pd.DataFrame:
+    """履歴CSVに行がある（年, 月）の一覧"""
+    if history_df.empty:
+        return pd.DataFrame(columns=["year", "month"])
+    return history_df[["year", "month"]].drop_duplicates().sort_values(["year", "month"])
+
+
+def get_latest_month_with_data(history_df: pd.DataFrame) -> Tuple[int, int]:
+    """観測値が1つでもある最新の（年, 月）。
+
+    「最新公開月」ではなく「値のある最新月」にする。シーズン初めは
+    新しい月のページが公開されても、しばらく全地点が空欄のことがあるため。
+    """
+    if history_df.empty:
         now = datetime.now()
         return now.year, now.month
 
-    sorted_df = url_df.sort_values(["年", "月"], ascending=False)
-    latest = sorted_df.iloc[0]
-    return int(latest["年"]), int(latest["月"])
+    has_value = history_df["snowfall_cm"].notna() | history_df["snowdepth_cm"].notna()
+    df = history_df[has_value] if has_value.any() else history_df
+    latest = df.sort_values(["year", "month"]).iloc[-1]
+    return int(latest["year"]), int(latest["month"])
 
 
 # ==========
@@ -201,15 +199,16 @@ def main() -> None:
     st.title("❄️ 妙高市 降雪・積雪データ可視化")
     st.markdown("---")
 
-    url_df = load_url_data()
-    if url_df.empty:
-        st.error("データURLが読み込めません。data_urls.csv を確認してください。")
+    history_df = load_history_data()
+    months_df = get_available_months(history_df)
+    if months_df.empty:
+        st.error("観測データが読み込めません。snow_data_history.csv を確認してください。")
         return
 
-    latest_year, latest_month = get_latest_available_month(url_df)
+    latest_year, latest_month = get_latest_month_with_data(history_df)
 
     # 利用可能な年
-    available_years = sorted(url_df["年"].unique())
+    available_years = sorted(int(y) for y in months_df["year"].unique())
 
     # サイドバー
     st.sidebar.header("📊 表示条件設定")
@@ -225,7 +224,7 @@ def main() -> None:
             year = st.selectbox("年", options=available_years, index=default_year_idx, key=f"year_{i}")
 
         with col2:
-            available_months = sorted(url_df[url_df["年"] == year]["月"].unique())
+            available_months = sorted(int(m) for m in months_df[months_df["year"] == year]["month"].unique())
             default_month_idx = available_months.index(latest_month) if latest_month in available_months else 0
             month = st.selectbox("月", options=available_months, index=default_month_idx, key=f"month_{i}")
 
@@ -251,9 +250,6 @@ def main() -> None:
     if st.sidebar.button("🔄 データを再読み込み"):
         st.cache_data.clear()
         st.rerun()
-
-    # 観測データ読み込み
-    history_df = load_history_data()
 
     st.markdown("## 📈 グラフ表示")
 
@@ -289,6 +285,7 @@ def main() -> None:
             width="stretch",
         )
     st.caption("観測時刻: 9時 | 降雪量: 前日分 | 積雪量: 当日分")
+    st.caption("関山は、2025年度までは妙高市役所 妙高支所、2026年度からは気象庁 関山観測所の値です")
 
 
 if __name__ == "__main__":
