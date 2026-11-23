@@ -14,7 +14,7 @@
  */
 
 // 配信物を更新したらここを上げる。古いキャッシュは activate で消える。
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL_CACHE = `miyoko-snow-shell-${VERSION}`;
 const DATA_CACHE = `miyoko-snow-data-${VERSION}`;
 
@@ -44,7 +44,8 @@ self.addEventListener("install", (event) => {
       // 初回アクセスでは、ページがデータを取りに行く時点でまだ Service Worker が
       // 通信を見張っていない。ここで入れておかないと、
       // 「一度も online で開き直していない状態で圏外になる」と何も出せない。
-      caches.open(DATA_CACHE).then((cache) => cache.add("./" + DATA_PATH))
+      caches.open(DATA_CACHE).then((cache) =>
+        cache.add(new Request("./" + DATA_PATH, { cache: "no-cache" })))
     ])
       // 新しい版をすぐ使う。毎朝1回しか開かない道具なので、
       // 古い版に張り付いたまま気づかない状態のほうが困る。
@@ -102,7 +103,10 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.endsWith(DATA_PATH)) {
     // 通信はここで始める。時間切れで保存分を返したあとも裏で走り続け、
     // 返ってきたらキャッシュだけ新しくしておく（次に開いたときに効く）。
-    const network = fetch(req).then((res) => {
+    // cache: "no-cache" … ブラウザのHTTPキャッシュ（GitHub Pages は最大10分）を素通りさせず、
+    // 必ずサーバーに「変わったか」を確かめる。変わっていなければ304で済むので軽い。
+    // これが無いと、更新直後に開いても10分前の古いJSONが返ることがある。
+    const network = fetch(req, { cache: "no-cache" }).then((res) => {
       if (res && res.ok) {
         const copy = res.clone();
         caches.open(DATA_CACHE).then((c) => c.put("./" + DATA_PATH, copy));

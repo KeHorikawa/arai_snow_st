@@ -36,6 +36,9 @@
     --line: #22384f;
   }
   * { box-sizing: border-box; }
+  /* hidden 属性で隠したものを確実に隠す。ブラウザ既定の display:none は、
+     .tabs { display: flex } のような指定に負けて表示されてしまうため */
+  [hidden] { display: none !important; }
   html, body { margin: 0; padding: 0; }
   body {
     background: var(--bg);

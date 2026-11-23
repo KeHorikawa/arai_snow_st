@@ -145,6 +145,19 @@ Chrome（Android）でURLを開き、メニューから「**アプリをイン�
 `/` と `/docs` の2択で、この名前は GitHub が決めています。公開したいデータを
 `docs/data/snow_data.json` に置いているのもそのためです。
 
+### マージ前にPCで確かめる
+
+GitHub Pages は main しか公開しないので、ブランチの画面は手元で配信して確かめます。
+
+```bash
+git switch <ブランチ名>
+python tools/preview.py        # → http://localhost:8765/ を開く。終了は Ctrl+C
+```
+
+- **シークレットウィンドウで開く**のがおすすめです。Service Worker のキャッシュで古い画面が出るのを避けられます
+- 表示されるデータは、そのブランチの `docs/data/snow_data.json` です
+- 本番とは別の場所（localhost）なので、ふだん使っているアプリには影響しません
+
 ## データ収集の自動化（GitHub Actions）
 
 データの取得は、アプリの表示とは切り離して GitHub Actions が毎朝1回行います。
