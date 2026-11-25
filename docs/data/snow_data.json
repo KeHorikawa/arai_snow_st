@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-24T20:05:00+09:00",
+  "generated_at": "2026-11-25T18:55:03+09:00",
   "source_url": "https://www.city.myoko.niigata.jp/docs/88899.html",
   "season": "2026-27",
   "season_status": "in-season",
@@ -10,7 +10,7 @@
     "関山"
   ],
   "latest": {
-    "observed_date": "2026-11-23",
+    "observed_date": "2026-11-25",
     "by_location": {
       "新井消防署": {
         "snowdepth_cm": null,
@@ -18,8 +18,8 @@
         "snowfall_cm": null
       },
       "頸南消防署": {
-        "snowdepth_cm": 0,
-        "snowdepth_diff_cm": 0,
+        "snowdepth_cm": 3,
+        "snowdepth_diff_cm": 3,
         "snowfall_cm": null
       },
       "関山": {
@@ -53,7 +53,9 @@
       "2026-11-20",
       "2026-11-21",
       "2026-11-22",
-      "2026-11-23"
+      "2026-11-23",
+      "2026-11-24",
+      "2026-11-25"
     ],
     "新井消防署": {
       "snowfall_cm": [
@@ -79,9 +81,13 @@
         null,
         null,
         null,
+        null,
+        null,
         null
       ],
       "snowdepth_cm": [
+        null,
+        null,
         null,
         null,
         null,
@@ -131,6 +137,8 @@
         5,
         0,
         0,
+        null,
+        3,
         null
       ],
       "snowdepth_cm": [
@@ -156,7 +164,9 @@
         1,
         5,
         0,
-        0
+        0,
+        null,
+        3
       ]
     },
     "関山": {
@@ -183,9 +193,13 @@
         null,
         null,
         null,
+        null,
+        null,
         null
       ],
       "snowdepth_cm": [
+        null,
+        null,
         null,
         null,
         null,

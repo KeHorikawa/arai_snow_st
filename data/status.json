@@ -1,7 +1,7 @@
 {
-  "last_run_at": "2026-11-24T20:05:00+09:00",
+  "last_run_at": "2026-11-25T18:55:03+09:00",
   "result": "ok",
   "note": "2026年11月ページを取得",
-  "rows_written": 3,
-  "latest_observed_date": "2026-11-23"
+  "rows_written": 2,
+  "latest_observed_date": "2026-11-25"
 }
